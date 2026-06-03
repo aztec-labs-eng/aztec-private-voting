@@ -1,0 +1,128 @@
+/**
+ * Deploy PrivateVoting to a local sandbox or to testnet.
+ *
+ *   npm run deploy            # local  (prefunded / SponsoredFPC, no bridging)
+ *   npm run deploy:testnet    # testnet (bridges fee juice to fund the deployer)
+ *
+ * On Aztec, "deploying" is not one step like on Ethereum. It is:
+ *   1. register the contract *class* (the code) on the network,
+ *   2. deploy an *instance* of that class at a deterministic address,
+ *   3. run the instance's public initializer (the `constructor`).
+ * The `deploy_instance` region below shows all three happening together.
+ *
+ * Run with Node 24's native TS support (no ts-node needed):
+ *   node scripts/deploy.ts --network <local|testnet>
+ */
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { Fr } from "@aztec/foundation/curves/bn254";
+import { TxStatus } from "@aztec/stdlib/tx";
+
+import {
+  PrivateVotingContract,
+  PrivateVotingContractArtifact,
+} from "../packages/contracts/artifacts/PrivateVoting.ts";
+import {
+  parseNetwork,
+  NETWORK_URLS,
+  setupWallet,
+  loadOrCreateSecret,
+  deployAdmin,
+  getSalt,
+} from "../lib/aztec-kit/testing/index.ts";
+
+// The demo runs a single election; the contract itself supports many.
+const ELECTION_ID = 1n;
+// Candidate ids the frontend renders buttons for.
+const CANDIDATES = [1n, 2n, 3n];
+
+async function main() {
+  const network = parseNetwork();
+  const nodeUrl = NETWORK_URLS[network];
+
+  // 1. Wallet + fee payment. On `local` this points fees at the sandbox
+  //    SponsoredFPC; on testnet the deployer pays from its own bridged FJ.
+  const { node, wallet, paymentMethod } = await setupWallet(nodeUrl, network);
+
+  // 2. The deployer account. `deployAdmin` is idempotent: it deploys a schnorr
+  //    account once (via SponsoredFPC on local, or by bridging fee juice on
+  //    testnet) and otherwise returns the existing address.
+  const { secretKey, generated } = loadOrCreateSecret("VOTING_ADMIN_SECRET");
+  if (generated) {
+    console.log(`Generated a deployer secret. Re-export it to reuse this account:`);
+    console.log(`  export VOTING_ADMIN_SECRET=${secretKey.toString()}`);
+  }
+  const admin = await deployAdmin({
+    network,
+    node,
+    wallet,
+    secretKey,
+    sponsoredPaymentMethod: paymentMethod,
+    label: "Voting deployer",
+  });
+
+  const currentMinFees = await node.getCurrentMinFees();
+  const sendOpts = {
+    from: admin,
+    fee: { paymentMethod, gasSettings: { maxFeesPerGas: currentMinFees.mul(10) } },
+    wait: { timeout: 120, waitForStatus: TxStatus.PROPOSED },
+  } as const;
+
+  // docs:start:deploy_instance
+  // Deterministic address from (class id, deployer, salt, constructor args), so
+  // re-running this script reuses the same contract instead of redeploying.
+  const salt = getSalt();
+  const deployMethod = PrivateVotingContract.deploy(wallet, admin, { deployer: admin, salt });
+  const instance = await deployMethod.getInstance();
+
+  // Always register the instance with our PXE (cheap + idempotent)...
+  await wallet.registerContract(instance, PrivateVotingContractArtifact);
+
+  // ...but only send the deploy tx if this address isn't on-chain yet. The deploy
+  // tx publishes the class, deploys the instance, and runs the `constructor`.
+  const alreadyDeployed = await node.getContract(instance.address);
+  if (!alreadyDeployed) {
+    console.log(`Deploying PrivateVoting at ${instance.address}...`);
+    await deployMethod.send(sendOpts);
+  } else {
+    console.log(`PrivateVoting already deployed at ${instance.address}, reusing.`);
+  }
+  // docs:end:deploy_instance
+
+  const voting = PrivateVotingContract.at(instance.address, wallet);
+
+  // Open the demo election so the frontend can cast votes immediately.
+  await voting.methods.start_vote({ id: new Fr(ELECTION_ID) }).send(sendOpts);
+  console.log(`Election ${ELECTION_ID} is open.`);
+
+  // Write the deployment the frontend reads (address + election + candidates).
+  const { l1ChainId, rollupVersion } = await node.getNodeInfo();
+  const deployment = {
+    network,
+    nodeUrl,
+    chainId: l1ChainId.toString(),
+    rollupVersion: rollupVersion.toString(),
+    contractAddress: instance.address.toString(),
+    // deployer + salt let the frontend rebuild the contract instance to register it.
+    deployer: admin.toString(),
+    salt: salt.toString(),
+    electionId: ELECTION_ID.toString(),
+    candidates: CANDIDATES.map((c) => c.toString()),
+  };
+  const outDir = join(import.meta.dirname, "..", "packages", "app", "src", "deployments");
+  mkdirSync(outDir, { recursive: true });
+  const outPath = join(outDir, `${network}.json`);
+  writeFileSync(outPath, JSON.stringify(deployment, null, 2));
+
+  console.log(`\nDeployed PrivateVoting to ${network}.`);
+  console.log(`  contract: ${instance.address}`);
+  console.log(`  wrote:    ${outPath}`);
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

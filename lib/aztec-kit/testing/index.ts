@@ -1,0 +1,56 @@
+/**
+ * Shared CLI / deploy-script plumbing for the app scripts folders.
+ *
+ * Importers are Node-only — this module pulls in PXE + aztec.js + @aztec/accounts
+ * which aren't browser-safe. The `@aztec-kit/common/testing` subpath export
+ * keeps it out of the default browser bundle entry.
+ */
+export {
+  VALID_NETWORKS,
+  NETWORK_URLS,
+  L1_DEFAULTS,
+  LOCAL_L1_FUNDER_KEY,
+  VALID_PAYMENT_MODES,
+  DEFAULT_PAYMENT_MODE,
+  resolveL1Funder,
+  bridgeMode,
+  type NetworkName,
+  type PaymentMode,
+} from "./network-config.ts";
+
+export { parseNetwork, parsePaymentMode, parseAddressList } from "./cli.ts";
+
+export {
+  getSponsoredFPCContract,
+  buildPaymentMethod,
+  setupWallet,
+  type PaymentMethod,
+  type SetupWalletResult,
+} from "./wallet-setup.ts";
+
+export {
+  loadOrCreateSecret,
+  getSalt,
+  deriveSchnorrAdminAddress,
+  getAdmin,
+  deployAdmin,
+  type AdminDeployMode,
+  type DeployAdminParams,
+} from "./admin.ts";
+
+export {
+  setupLocalNetwork,
+  setupLocalNetworkCli,
+  type LocalNetwork,
+  type LocalNetworkOptions,
+  type LocalNetworkCli,
+  type LocalNetworkCliOptions,
+} from "./local-network.ts";
+
+export {
+  ensureAztecBinsInPath,
+  resolveAnvilBinary,
+  spawnTracked,
+  killTracked,
+  type SpawnTrackedOptions,
+} from "./spawn.ts";

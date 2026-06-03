@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# noir build output (artifacts/ is committed; target/ is not)
+packages/contracts/target/
+packages/contracts/codegenCache.json
+
+# frontend build
+packages/app/dist/
+packages/app/.vite/
+
+# generated per-environment deployment manifests (written by `npm run deploy`)
+packages/app/src/deployments/
+
+# tests
+test-results/
+playwright-report/
+.aztec-data/
+
+# local secrets / env
+.env
+.env.local
+
+# editor / os
+.DS_Store
+*.log
+.tsbuildinfo

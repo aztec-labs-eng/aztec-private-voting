@@ -1,0 +1,49 @@
+{
+  "name": "aztec-private-voting",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private Voting — the Aztec quickstart example app. Private votes, a public tally, one vote per voter via a nullifier.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "compile": "npm run compile -w @app/contracts",
+    "codegen": "npm run codegen -w @app/contracts",
+    "build:contracts": "npm run build -w @app/contracts",
+    "dev": "npm run dev -w @app/frontend",
+    "build": "npm run build -w @app/frontend",
+    "test": "npm run test -w @app/contracts && npm run test:integration",
+    "test:contracts": "npm run test -w @app/contracts",
+    "test:integration": "vitest run --root test/integration",
+    "test:e2e": "playwright test",
+    "deploy": "node scripts/deploy.ts --network local",
+    "deploy:testnet": "node scripts/deploy.ts --network testnet",
+    "update": "node scripts/update.ts"
+  },
+  "devDependencies": {
+    "@aztec/accounts": "v5.0.0-nightly.20260531",
+    "@aztec/aztec": "v5.0.0-nightly.20260531",
+    "@aztec/aztec-node": "v5.0.0-nightly.20260531",
+    "@aztec/aztec.js": "v5.0.0-nightly.20260531",
+    "@aztec/constants": "v5.0.0-nightly.20260531",
+    "@aztec/ethereum": "v5.0.0-nightly.20260531",
+    "@aztec/foundation": "v5.0.0-nightly.20260531",
+    "@aztec/noir-contracts.js": "v5.0.0-nightly.20260531",
+    "@aztec/noir-protocol-circuits-types": "v5.0.0-nightly.20260531",
+    "@aztec/protocol-contracts": "v5.0.0-nightly.20260531",
+    "@aztec/pxe": "v5.0.0-nightly.20260531",
+    "@aztec/simulator": "v5.0.0-nightly.20260531",
+    "@aztec/stdlib": "v5.0.0-nightly.20260531",
+    "@aztec/telemetry-client": "v5.0.0-nightly.20260531",
+    "@aztec/wallets": "v5.0.0-nightly.20260531",
+    "@aztec/world-state": "v5.0.0-nightly.20260531",
+    "@types/node": "^22.15.17",
+    "typescript": "~5.7.3",
+    "viem": "^2.21.0",
+    "vitest": "^3.0.0"
+  }
+}
