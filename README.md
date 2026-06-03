@@ -20,8 +20,9 @@ packages/
     test/src/lib.nr       TXE unit tests  (separate crate, per aztec-packages#20681)
     artifacts/            committed codegen output (PrivateVoting.ts)
   app/                  React + Vite 8 + vanilla-extract frontend
-    src/voting.ts         REGISTER -> SIMULATE -> SEND  (docs regions)
-    src/App.tsx           candidate buttons + live tally + step panel
+    src/App.tsx           candidate list, donut chart, deadline countdown
+    src/aztec/            the Aztec layer: wallet, voting (docs regions), setup, deployment
+    src/components/       SetupModal, StepProgress, VoteChart
 scripts/
   deploy.ts             deploy to local / testnet (idempotent)
   update.ts             bump the pinned Aztec version everywhere
@@ -43,7 +44,7 @@ npm install              # install workspaces
 npm run compile          # aztec compile   (Noir -> ACIR)
 npm run codegen          # aztec codegen   (-> packages/contracts/artifacts/PrivateVoting.ts)
 npm test                 # TXE unit tests + in-process integration test
-npm run deploy           # deploy to a local sandbox (prefunded / SponsoredFPC)
+npm run deploy           # deploy to a local network (prefunded / SponsoredFPC)
 npm run deploy:testnet   # deploy to testnet (bridges fee juice to fund the deployer)
 npm run dev              # run the frontend (http://localhost:5173)
 ```
@@ -51,7 +52,7 @@ npm run dev              # run the frontend (http://localhost:5173)
 ### Local end-to-end
 
 ```bash
-aztec start --sandbox      # in one terminal
+aztec start --local-network      # in one terminal
 npm run deploy             # writes packages/app/src/deployments/local.json
 npm run dev                # open the app, cast a vote, watch the tally tick up
 ```
@@ -71,7 +72,7 @@ redeploying.
 
 ## Fees & privacy
 
-- **Local:** prefunded test accounts / the sandbox `SponsoredFPC` pay the gas — no
+- **Local:** prefunded test accounts / the local-network `SponsoredFPC` pay the gas — no
   bridging, anvil/forge-familiar.
 - **Testnet:** the deployer self-bridges fee juice from L1 (handled by the vendored
   `bridge()` helper). Note the privacy trade-off: paying with your own bridged fee juice
@@ -111,7 +112,7 @@ The site inlines named regions via `#include_code` (fail-closed). Current region
 | File | regions |
 | --- | --- |
 | `packages/contracts/contract/src/main.nr` | `storage_struct`, `cast_vote`, `add_to_tally` |
-| `packages/app/src/voting.ts` | `register_contract`, `simulate_vote`, `send_vote` |
+| `packages/app/src/aztec/voting.ts` | `register_contract`, `simulate_query`, `send_vote` |
 | `scripts/deploy.ts` | `deploy_instance` |
 
 `snippetRoots` should point at `packages/contracts/contract/`, `packages/app/src/`, and

@@ -2,11 +2,11 @@
  * Browser wallet setup.
  *
  * Connects to the Aztec node, spins up an in-browser `EmbeddedWallet`, and gives
- * it a fresh ephemeral account. Fees are paid by the sandbox's SponsoredFPC, so
+ * it a fresh ephemeral account. Fees are paid by the local network's SponsoredFPC, so
  * the visitor doesn't need any fee juice. A fresh account per session means each
  * visitor gets exactly one vote per election (the nullifier enforces the rest).
  */
-import { createAztecNodeClient } from "@aztec/aztec.js/node";
+import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
 import { NO_FROM } from "@aztec/aztec.js/account";
@@ -20,12 +20,22 @@ import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
 export interface Session {
   wallet: EmbeddedWallet;
+  /** The node client, used for read-only queries like public event lookups. */
+  node: AztecNode;
   address: AztecAddress;
   /** Pass to `.send({ fee: { paymentMethod } })` so the FPC sponsors the gas. */
   paymentMethod: SponsoredFeePaymentMethod;
 }
 
-export async function connect(nodeUrl: string): Promise<Session> {
+/** Phases the setup modal narrates as they happen. */
+export type ConnectPhase = "connect" | "account";
+
+export async function connect(
+  nodeUrl: string,
+  onPhase?: (phase: ConnectPhase) => void,
+): Promise<Session> {
+  // 1. Connect to the node and spin up an in-browser wallet (its own PXE).
+  onPhase?.("connect");
   const node = createAztecNodeClient(nodeUrl);
   const wallet = await EmbeddedWallet.create(node, { ephemeral: true });
 
@@ -37,7 +47,8 @@ export async function connect(nodeUrl: string): Promise<Session> {
   await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFPC.address);
 
-  // Fresh schnorr account, deployed with fees sponsored by the FPC.
+  // 2. Create a fresh schnorr account and deploy it, fees sponsored by the FPC.
+  onPhase?.("account");
   const secret = Fr.random();
   const account = await wallet.createSchnorrAccount(secret, new Fr(0), deriveSigningKey(secret));
   const deployMethod = await account.getDeployMethod();
@@ -49,5 +60,5 @@ export async function connect(nodeUrl: string): Promise<Session> {
     wait: { waitForStatus: TxStatus.PROPOSED, timeout: 120 },
   });
 
-  return { wallet, address: account.address, paymentMethod };
+  return { wallet, node, address: account.address, paymentMethod };
 }

@@ -1,5 +1,5 @@
 /**
- * Deploy PrivateVoting to a local sandbox or to testnet.
+ * Deploy PrivateVoting to a local network or to testnet.
  *
  *   npm run deploy            # local  (prefunded / SponsoredFPC, no bridging)
  *   npm run deploy:testnet    # testnet (bridges fee juice to fund the deployer)
@@ -34,14 +34,21 @@ import {
 
 // The demo runs a single election; the contract itself supports many.
 const ELECTION_ID = 1n;
-// Candidate ids the frontend renders buttons for.
-const CANDIDATES = [1n, 2n, 3n];
+// Candidates the frontend renders. (Two of them are, ahem, very hard to tell apart.)
+const CANDIDATES = [
+  { id: 1n, name: "John Jackson" },
+  { id: 2n, name: "Jack Johnson" },
+  { id: 3n, name: "Richard Nixon's Head" },
+];
+// Cosmetic voting deadline shown as a countdown in the UI (display-only; the
+// admin actually closes voting on-chain via `end_vote`).
+const VOTING_WINDOW_DAYS = 7;
 
 async function main() {
   const network = parseNetwork();
   const nodeUrl = NETWORK_URLS[network];
 
-  // 1. Wallet + fee payment. On `local` this points fees at the sandbox
+  // 1. Wallet + fee payment. On `local` this points fees at the local network
   //    SponsoredFPC; on testnet the deployer pays from its own bridged FJ.
   const { node, wallet, paymentMethod } = await setupWallet(nodeUrl, network);
 
@@ -108,7 +115,8 @@ async function main() {
     deployer: admin.toString(),
     salt: salt.toString(),
     electionId: ELECTION_ID.toString(),
-    candidates: CANDIDATES.map((c) => c.toString()),
+    candidates: CANDIDATES.map((c) => ({ id: c.id.toString(), name: c.name })),
+    deadline: new Date(Date.now() + VOTING_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString(),
   };
   const outDir = join(import.meta.dirname, "..", "packages", "app", "src", "deployments");
   mkdirSync(outDir, { recursive: true });

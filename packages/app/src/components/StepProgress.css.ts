@@ -1,5 +1,5 @@
 import { keyframes, style, styleVariants } from "@vanilla-extract/css";
-import { vars } from "./theme.css.ts";
+import { vars } from "../theme.css.ts";
 
 export const panel = style({
   background: vars.color.surface,

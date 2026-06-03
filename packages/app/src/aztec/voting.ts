@@ -8,6 +8,7 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { TxStatus } from "@aztec/stdlib/tx";
+import { getPublicEvents } from "@aztec/aztec.js/events";
 
 import {
   PrivateVotingContract,
@@ -41,22 +42,6 @@ export async function registerVoting(
 }
 // docs:end:register_contract
 
-// docs:start:simulate_vote
-/**
- * SIMULATE: run the private function locally to preview the result and surface
- * errors (like trying to vote twice) before paying for anything.
- */
-export async function simulateVote(
-  voting: PrivateVotingContract,
-  session: Session,
-  deployment: Deployment,
-  candidate: bigint,
-): Promise<void> {
-  await voting.methods
-    .cast_vote(election(deployment), new Fr(candidate))
-    .simulate({ from: session.address });
-}
-// docs:end:simulate_vote
 
 // docs:start:send_vote
 /**
@@ -74,12 +59,17 @@ export async function sendVote(
     .send({
       from: session.address,
       fee: { paymentMethod: session.paymentMethod },
-      wait: { waitForStatus: TxStatus.PROPOSED, timeout: 120 },
     });
 }
 // docs:end:send_vote
 
-/** Read the public tally for a candidate. */
+// docs:start:simulate_query
+/**
+ * SIMULATE: most of what an app does is *read* state to populate the UI. A
+ * simulate runs the function locally against the latest state and returns the
+ * value without sending a transaction or paying a fee. Here we read the public
+ * tally for a candidate; the app calls this for every candidate to draw the chart.
+ */
 export async function getTally(
   voting: PrivateVotingContract,
   session: Session,
@@ -91,3 +81,39 @@ export async function getTally(
     .simulate({ from: session.address });
   return Number(result);
 }
+// docs:end:simulate_query
+
+export interface VoteEvent {
+  candidate: bigint;
+  tally: bigint;
+  blockNumber: number;
+  txHash: string;
+}
+
+// docs:start:query_events
+/**
+ * QUERY EVENTS: read the public `VoteCast` events the contract emits. These are
+ * public logs anyone can fetch from the node and decode with the event's ABI;
+ * they reveal the candidate and running tally, never the voter. We use them to
+ * build a live feed of votes as they land.
+ */
+export async function getVoteFeed(
+  session: Session,
+  deployment: Deployment,
+): Promise<VoteEvent[]> {
+  // Field values decode to bigint at runtime, so we type the event accordingly.
+  const { events } = await getPublicEvents<{ candidate: bigint; tally: bigint }>(
+    session.node,
+    PrivateVotingContract.events.VoteCast,
+    { contractAddress: AztecAddress.fromString(deployment.contractAddress) },
+  );
+  return events
+    .map((e) => ({
+      candidate: BigInt(e.event.candidate),
+      tally: BigInt(e.event.tally),
+      blockNumber: e.metadata.l2BlockNumber,
+      txHash: e.metadata.txHash.toString(),
+    }))
+    .sort((a, b) => b.blockNumber - a.blockNumber); // newest first
+}
+// docs:end:query_events

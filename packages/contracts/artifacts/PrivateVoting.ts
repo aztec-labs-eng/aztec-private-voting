@@ -13,6 +13,12 @@ import PrivateVotingContractArtifactJson from '../target/private_voting-PrivateV
 export const PrivateVotingContractArtifact = loadContractArtifact(PrivateVotingContractArtifactJson as NoirCompiledContract);
 
 
+      export type VoteCast = {
+        election_id: FieldLike
+candidate: FieldLike
+tally: FieldLike
+      }
+    
 
 /**
  * Type-safe interface for contract PrivateVoting;
@@ -144,5 +150,38 @@ vote_claims: {
     sync_state: ((scope: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 
+  
+    public static get events(): { VoteCast: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
+    return {
+      VoteCast: {
+        abiType: {
+    "kind": "struct",
+    "fields": [
+        {
+            "name": "election_id",
+            "type": {
+                "kind": "field"
+            }
+        },
+        {
+            "name": "candidate",
+            "type": {
+                "kind": "field"
+            }
+        },
+        {
+            "name": "tally",
+            "type": {
+                "kind": "field"
+            }
+        }
+    ],
+    "path": "PrivateVoting::VoteCast"
+},
+        eventSelector: EventSelector.fromString("0xdaea5acc"),
+        fieldNames: ["election_id","candidate","tally"],
+      }
+    };
+  }
   
 }

@@ -12,6 +12,7 @@ import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
 import { deployFundedSchnorrAccounts } from "@aztec/wallets/testing";
+import { getPublicEvents } from "@aztec/aztec.js/events";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
 import { setupLocalNetwork, type LocalNetwork } from "../../lib/aztec-kit/testing/index.ts";
@@ -60,6 +61,17 @@ describe("PrivateVoting (in-process network)", () => {
 
     const { result } = await voting.methods.get_tally(ELECTION, ALICE_PICK).simulate({ from: admin });
     expect(BigInt(result.toString())).toBe(1n);
+  });
+
+  it("emits a public VoteCast event for the live feed", async () => {
+    const { events } = await getPublicEvents<{ candidate: bigint; tally: bigint }>(
+      network.node,
+      PrivateVotingContract.events.VoteCast,
+      { contractAddress: voting.address },
+    );
+    expect(events.length).toBe(1);
+    expect(BigInt(events[0].event.candidate)).toBe(ALICE_PICK.toBigInt());
+    expect(BigInt(events[0].event.tally)).toBe(1n);
   });
 
   it("rejects a second vote from the same account (duplicate nullifier)", async () => {

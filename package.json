@@ -11,11 +11,10 @@
     "node": ">=24"
   },
   "scripts": {
-    "compile": "npm run compile -w @app/contracts",
-    "codegen": "npm run codegen -w @app/contracts",
     "build:contracts": "npm run build -w @app/contracts",
     "dev": "npm run dev -w @app/frontend",
-    "build": "npm run build -w @app/frontend",
+    "build:frontend": "npm run build -w @app/frontend",
+    "build": "npm run build -w @app/contracts && npm run build -w @app/frontend",
     "test": "npm run test -w @app/contracts && npm run test:integration",
     "test:contracts": "npm run test -w @app/contracts",
     "test:integration": "vitest run --root test/integration",

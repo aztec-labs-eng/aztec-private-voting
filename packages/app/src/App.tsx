@@ -1,164 +1,220 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import type { PrivateVotingContract } from "@app/contracts/PrivateVoting";
-import { StepProgress, type Step, type StepState } from "./StepProgress.tsx";
-import { connect, type Session } from "./wallet.ts";
-import { getTally, registerVoting, sendVote, simulateVote } from "./voting.ts";
-import { loadDeployment } from "./deployment.ts";
+import { sendVote, getVoteFeed, type VoteEvent } from "./aztec/voting.ts";
+import { loadDeployment } from "./aztec/deployment.ts";
+import {
+  startSetup,
+  subscribe,
+  getPhase,
+  getError,
+  readTallies,
+  type SetupResult,
+} from "./aztec/setup.ts";
+import { SetupModal } from "./components/SetupModal.tsx";
+import { VoteChart, type Slice } from "./components/VoteChart.tsx";
+import { Feed, type FeedRow } from "./components/Feed.tsx";
+import { VoteModal } from "./components/VoteModal.tsx";
+import { vars } from "./theme.css.ts";
 import * as css from "./App.css.ts";
 
 const deployment = loadDeployment();
 
-// The four protocol steps the quickstart walks through.
-type StepKey = "connect" | "register" | "simulate" | "send";
-const STEP_META: Record<StepKey, { label: string; description: string }> = {
-  connect: { label: "Connect", description: "Create an in-browser wallet + account" },
-  register: { label: "Register", description: "Teach the PXE about the contract" },
-  simulate: { label: "Simulate", description: "Run the private vote locally" },
-  send: { label: "Send", description: "Submit the tx; bump the public tally" },
-};
-const ORDER: StepKey[] = ["connect", "register", "simulate", "send"];
+// Candidate colors, by position.
+const COLORS = [vars.color.accent, "#5ec8f0", "#f06ec8", "#f5b53c"];
 
-type StepsState = Record<StepKey, StepState>;
-const initialSteps: StepsState = { connect: "pending", register: "pending", simulate: "pending", send: "pending" };
+function formatRemaining(ms: number): string {
+  if (ms <= 0) return "Voting closed";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h left`;
+  if (h > 0) return `${h}h ${m}m left`;
+  return `${m}m ${s % 60}s left`;
+}
 
-type Action =
-  | { type: "set"; key: StepKey; state: StepState }
-  | { type: "resetVote" };
-
-function reducer(state: StepsState, action: Action): StepsState {
-  switch (action.type) {
-    case "set":
-      return { ...state, [action.key]: action.state };
-    case "resetVote":
-      // Connect stays done; re-arm the per-vote steps.
-      return { ...state, register: "done", simulate: "pending", send: "pending" };
-  }
+function useCountdown(deadline: string | undefined): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (!deadline) return null;
+  return formatRemaining(new Date(deadline).getTime() - now);
 }
 
 export default function App() {
-  const [steps, dispatch] = useReducer(reducer, initialSteps);
-  const [session, setSession] = useState<Session | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const phase = useSyncExternalStore(subscribe, getPhase, getPhase);
+  const [entered, setEntered] = useState(false);
+  const [ready, setReady] = useState<SetupResult | null>(null);
   const [tallies, setTallies] = useState<Record<string, number>>({});
-  const votingRef = useRef<PrivateVotingContract | null>(null);
+  const [feed, setFeed] = useState<VoteEvent[]>([]);
+  const [loadingTally, setLoadingTally] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const candidates = useMemo(() => deployment?.candidates ?? [], []);
+  const countdown = useCountdown(deployment?.deadline);
+  const closed = countdown === "Voting closed";
 
-  // CONNECT + REGISTER on load.
-  useEffect(() => {
+  // Read-only refresh: the public tally + the public VoteCast event feed. Both are
+  // simulate/query calls — no transaction, no fee. `silent` skips the loading
+  // indicator so the background poll doesn't flicker the UI.
+  const load = useCallback(async (r: SetupResult, opts?: { silent?: boolean }) => {
     if (!deployment) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        dispatch({ type: "set", key: "connect", state: "active" });
-        const s = await connect(deployment.nodeUrl);
-        if (cancelled) return;
-        setSession(s);
-        dispatch({ type: "set", key: "connect", state: "done" });
-
-        dispatch({ type: "set", key: "register", state: "active" });
-        votingRef.current = await registerVoting(s, deployment);
-        dispatch({ type: "set", key: "register", state: "done" });
-
-        await refreshTallies(s);
-      } catch (err) {
-        if (!cancelled) fail(err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!opts?.silent) setLoadingTally(true);
+    try {
+      const [t, f] = await Promise.all([
+        readTallies(r.voting, r.session, deployment),
+        getVoteFeed(r.session, deployment),
+      ]);
+      setTallies(t);
+      setFeed(f);
+    } catch {
+      /* transient read error; the next poll will retry */
+    } finally {
+      if (!opts?.silent) setLoadingTally(false);
+    }
   }, []);
 
-  function fail(err: unknown) {
-    const active = ORDER.find((k) => steps[k] === "active");
-    if (active) dispatch({ type: "set", key: active, state: "error" });
-    setError(err instanceof Error ? err.message : String(err));
-    setBusy(false);
-  }
+  // Kick off the one-shot setup. The singleton in setup.ts makes this safe to
+  // run twice under StrictMode without creating two wallets.
+  useEffect(() => {
+    if (!deployment) return;
+    startSetup(deployment)
+      .then((result) => {
+        setReady(result);
+        return load(result);
+      })
+      .catch(() => {
+        /* error surfaced via the setup store / modal */
+      });
+  }, [load]);
 
-  const refreshTallies = useCallback(
-    async (s: Session) => {
-      const voting = votingRef.current;
-      if (!voting || !deployment) return;
-      const entries = await Promise.all(
-        candidates.map(async (c) => [c, await getTally(voting, s, deployment, BigInt(c))] as const),
-      );
-      setTallies(Object.fromEntries(entries));
-    },
-    [candidates],
-  );
+  // Poll the tally + feed periodically so votes from other sessions show up.
+  useEffect(() => {
+    if (!ready) return;
+    const t = setInterval(() => void load(ready, { silent: true }), 5000);
+    return () => clearInterval(t);
+  }, [ready, load]);
 
   const vote = useCallback(
-    async (candidate: string) => {
-      const voting = votingRef.current;
-      if (!session || !voting || !deployment) return;
-      setBusy(true);
+    async (candidateId: string) => {
+      if (!ready || !deployment) return;
+      setBusy(candidateId);
       setError(null);
-      dispatch({ type: "resetVote" });
       try {
-        dispatch({ type: "set", key: "simulate", state: "active" });
-        await simulateVote(voting, session, deployment, BigInt(candidate));
-        dispatch({ type: "set", key: "simulate", state: "done" });
-
-        dispatch({ type: "set", key: "send", state: "active" });
-        await sendVote(voting, session, deployment, BigInt(candidate));
-        dispatch({ type: "set", key: "send", state: "done" });
-
-        await refreshTallies(session);
+        await sendVote(ready.voting, ready.session, deployment, BigInt(candidateId));
+        await load(ready);
       } catch (err) {
-        fail(err);
-        return;
+        setError(`Couldn't cast that vote: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusy(null);
       }
-      setBusy(false);
     },
-    [session, refreshTallies],
+    [ready, load],
   );
 
-  const stepList: Step[] = ORDER.map((key) => ({ key, ...STEP_META[key], state: steps[key] }));
-  const ready = !!session && steps.register === "done";
-
-  return (
-    <main className={css.page}>
-      <header>
-        <h1 className={css.h1}>Private Voting</h1>
-        <p className={css.lede}>
-          Your vote is cast in private; only the public tally changes. A nullifier stops anyone
-          from voting twice without revealing who voted.
-        </p>
-      </header>
-
-      {!deployment ? (
-        <div className={css.card}>
-          <strong>No deployment found.</strong>
+  if (!deployment) {
+    return (
+      <main className={css.page}>
+        <header className={css.header}>
+          <h1 className={css.h1}>Private Voting</h1>
+        </header>
+        <div className={css.hint}>
+          <strong>No (current) deployment found.</strong>
           <span className={css.status}>
-            Start a sandbox and run <code>npm run deploy</code>, then reload.
+            Start a local network and run <code>npm run deploy</code>, then reload.
           </span>
         </div>
-      ) : (
-        <div className={css.grid}>
-          <section className={css.card}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>Candidates</h2>
-            {candidates.map((c) => (
-              <div className={css.candidate} key={c}>
-                <button className={css.button} disabled={!ready || busy} onClick={() => vote(c)}>
-                  Vote #{c}
-                </button>
-                <span className={css.tally}>{tallies[c] ?? 0}</span>
-              </div>
-            ))}
-            {error && <span className={css.errorText}>{error}</span>}
-            {session && <span className={css.addr}>you: {session.address.toString()}</span>}
-          </section>
+      </main>
+    );
+  }
 
-          <section>
-            <StepProgress steps={stepList} />
-          </section>
-        </div>
+  const total = Object.values(tallies).reduce((a, b) => a + b, 0);
+  const slices: Slice[] = candidates.map((c, i) => ({
+    name: c.name,
+    value: tallies[c.id] ?? 0,
+    color: COLORS[i % COLORS.length],
+  }));
+
+  const colorOf = (candidateId: bigint) => {
+    const idx = candidates.findIndex((c) => c.id === candidateId.toString());
+    return idx >= 0 ? COLORS[idx % COLORS.length] : vars.color.muted;
+  };
+  const nameOf = (candidateId: bigint) =>
+    candidates.find((c) => c.id === candidateId.toString())?.name ?? `#${candidateId}`;
+  const feedRows: FeedRow[] = feed.map((e, i) => ({
+    key: `${e.txHash}-${i}`,
+    name: nameOf(e.candidate),
+    color: colorOf(e.candidate),
+    tally: e.tally,
+    blockNumber: e.blockNumber,
+    txShort: `${e.txHash.slice(0, 10)}…`,
+  }));
+
+  return (
+    <>
+      {!entered && (
+        <SetupModal phase={phase} error={getError()} onEnter={() => setEntered(true)} />
       )}
-    </main>
+
+      {busy && <VoteModal candidateName={nameOf(BigInt(busy))} />}
+
+      <main className={css.page}>
+        <header className={css.header}>
+          <h1 className={css.h1}>Private Voting</h1>
+          <p className={css.lede}>
+            Cast your vote in private &mdash; nobody learns who you picked. Only the public tally
+            below ever changes, and a nullifier stops anyone from voting twice.
+          </p>
+          <span className={`${css.deadline} ${closed ? "" : css.deadlineHot}`}>
+            ⏳ {countdown}
+          </span>
+        </header>
+
+        <div className={css.board}>
+          <div className={css.chartCard}>
+            <VoteChart slices={slices} />
+            <span className={css.simulating} data-active={loadingTally}>
+              {loadingTally ? "↻ reading tally (simulating get_tally)…" : "live tally"}
+            </span>
+          </div>
+
+          <div className={css.candidateColumn}>
+            {candidates.map((c, i) => {
+            const value = tallies[c.id] ?? 0;
+            const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+            const color = COLORS[i % COLORS.length];
+            return (
+              <div className={css.candidateCard} style={{ borderTopColor: color }} key={c.id}>
+                <div className={css.candidateHead}>
+                  <span className={css.name}>{c.name}</span>
+                  <span className={css.count}>
+                    {value} {value === 1 ? "vote" : "votes"} · {pct}%
+                  </span>
+                </div>
+                <button
+                  className={css.button}
+                  style={{ background: color }}
+                  disabled={!ready || busy !== null || closed}
+                  onClick={() => vote(c.id)}
+                >
+                  {busy === c.id ? "Sending…" : "Vote"}
+                </button>
+              </div>
+            );
+          })}
+          </div>
+        </div>
+
+        <Feed rows={feedRows} />
+
+        <footer className={css.footer}>
+          {error && <span className={css.errorText}>{error}</span>}
+          {ready && <span className={css.addr}>voting as {ready.session.address.toString()}</span>}
+        </footer>
+      </main>
+    </>
   );
 }
