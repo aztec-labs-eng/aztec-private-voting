@@ -151,7 +151,7 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
 
   // ── 4. Genesis ─────────────────────────────────────────────────────
   const fundedAddresses = opts.fundedAddresses ?? [];
-  const { genesisArchiveRoot, genesis, fundingNeeded } = await getGenesisValues(
+  const { genesisArchiveRoot, prefilledPublicData, fundingNeeded } = await getGenesisValues(
     fundedAddresses,
     opts.initialAccountFeeJuice,
   );
@@ -170,10 +170,10 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     feeJuicePortalInitialBalance: fundingNeeded,
     realVerifier: false,
   });
-  // v5 flattened the L1 addresses onto `AztecNodeConfig` (via L1ReaderConfig
-  // extending L1ContractAddresses), so we spread them rather than nesting
-  // under a `l1Contracts` key.
-  Object.assign(config, deployL1.l1ContractAddresses);
+  // 4.3.0 keeps the L1 addresses nested under `config.l1Contracts` (the node
+  // reads `config.l1Contracts.registryAddress` to discover the rest via the
+  // registry). v5 later flattened these onto the config root.
+  config.l1Contracts = deployL1.l1ContractAddresses;
   config.rollupVersion = deployL1.rollupVersion;
 
   // ── 6. Watcher ─────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
   const node = await AztecNodeService.createAndSync(
     config,
     { telemetry, dateProvider },
-    { genesis },
+    { prefilledPublicData },
   );
 
   const stop = async () => {

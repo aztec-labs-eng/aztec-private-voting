@@ -93,17 +93,20 @@ the same account fails on a duplicate nullifier**, and `end_vote` is admin-gated
 ## Versioning (two branches, like aztec-kit)
 
 One Aztec version is the single source of truth per branch — every `@aztec/*` dep **and**
-the `Nargo.toml` git `tag` move together via `npm run update -- --version <v>`.
+the `Nargo.toml` git `tag` move together via `npm run update -- --version <v>`. The pinned
+toolchain version also lives in **`.aztecrc`**, so `aztec-up use` (no argument) selects it.
 
 | Branch | Aztec version |
 | --- | --- |
-| `main` | latest **stable** (target v4.3.0) |
+| `main` | **4.3.0** (stable) |
 | `next` | latest **v5 nightly** |
 
-> This repo was built and verified against **`v5.0.0-nightly.20260531`** (the toolchain
-> available locally). To pin a branch to another version, run
-> `npm run update -- --version <v>`, then `aztec-up -v <v>`, `npm install`, and
-> `npm run build:contracts`.
+```bash
+aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
+```
+
+> To re-pin to a new version: `npm run update -- --version <v>`, update `.aztecrc`,
+> then `aztec-up install <v>`, `npm install`, and `npm run build:contracts`.
 
 ## For the quickstart site
 
