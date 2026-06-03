@@ -74,10 +74,12 @@ redeploying.
 
 - **Local:** prefunded test accounts / the local-network `SponsoredFPC` pay the gas — no
   bridging, anvil/forge-familiar.
-- **Testnet:** the deployer self-bridges fee juice from L1 (handled by the vendored
-  `bridge()` helper). Note the privacy trade-off: paying with your own bridged fee juice
-  links your transactions. For voting it barely matters — the vote itself is
-  nullifier-private; only the fact that *an* address transacted leaks.
+- **Testnet:** `deploy:testnet` bridges fee juice from L1 twice — once to fund the
+  **deployer** account, and once to fund the **SponsoredFPC** (a fully private contract;
+  no publication, we just credit its address). The frontend then sponsors every visitor's
+  vote through that FPC, so users need no fee juice of their own. Privacy note: the
+  *operator's* bridged funding links the operator's L1↔L2 txs, but visitors stay private —
+  their votes are nullifier-private and paid by the shared FPC.
 
 ## Test tiers
 

@@ -2,7 +2,8 @@
  * Deploy PrivateVoting to a local network or to testnet.
  *
  *   npm run deploy            # local  (prefunded / SponsoredFPC, no bridging)
- *   npm run deploy:testnet    # testnet (bridges fee juice to fund the deployer)
+ *   npm run deploy:testnet    # testnet (bridges fee juice to fund the deployer
+ *                             #          AND the SponsoredFPC the frontend uses)
  *
  * On Aztec, "deploying" is not one step like on Ethereum. It is:
  *   1. register the contract *class* (the code) on the network,
@@ -30,7 +31,12 @@ import {
   loadOrCreateSecret,
   deployAdmin,
   getSalt,
+  getSponsoredFPCContract,
+  L1_DEFAULTS,
+  resolveL1Funder,
+  bridgeMode,
 } from "../lib/aztec-kit/testing/index.ts";
+import { bridgeAndClaim } from "../lib/aztec-kit/bridging/index.ts";
 
 // The demo runs a single election; the contract itself supports many.
 const ELECTION_ID = 1n;
@@ -43,6 +49,9 @@ const CANDIDATES = [
 // Cosmetic voting deadline shown as a countdown in the UI (display-only; the
 // admin actually closes voting on-chain via `end_vote`).
 const VOTING_WINDOW_DAYS = 7;
+// How much fee juice to bridge into the SponsoredFPC on non-local networks. It
+// sponsors every visitor's vote, so size it for the demo (faucet may cap it).
+const SPONSOR_FUND_AMOUNT = BigInt("1000000000000000000000"); // 1000 FJ
 
 async function main() {
   const network = parseNetwork();
@@ -102,6 +111,28 @@ async function main() {
   // Open the demo election so the frontend can cast votes immediately.
   await voting.methods.start_vote({ id: new Fr(ELECTION_ID) }).send(sendOpts);
   console.log(`Election ${ELECTION_ID} is open.`);
+
+  // Fund the SponsoredFPC that the frontend uses to sponsor every visitor's vote.
+  // It is a fully private contract — no publication needed; we just credit its
+  // address with fee juice (the frontend registers it in its own PXE). On local
+  // the network already ships a funded one, so this only runs on testnet/nextnet.
+  if (network !== "local") {
+    const sponsoredFPC = await getSponsoredFPCContract();
+    console.log(`Bridging fee juice into SponsoredFPC ${sponsoredFPC.address}...`);
+    const { amount, minted } = await bridgeAndClaim({
+      node,
+      wallet,
+      recipient: sponsoredFPC.address,
+      claimFrom: admin,
+      l1RpcUrl: L1_DEFAULTS[network].l1RpcUrl,
+      l1ChainId: L1_DEFAULTS[network].l1ChainId,
+      amount: SPONSOR_FUND_AMOUNT,
+      l1PrivateKey: resolveL1Funder(network),
+      mode: bridgeMode(network),
+      claimFeeOpts: sendOpts.fee,
+    });
+    console.log(`SponsoredFPC funded with ${amount} FJ (minted=${minted}); votes are sponsored.`);
+  }
 
   // Write the deployment the frontend reads (address + election + candidates).
   const { l1ChainId, rollupVersion } = await node.getNodeInfo();
