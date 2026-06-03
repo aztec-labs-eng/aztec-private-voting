@@ -29,6 +29,32 @@ export const deadline = style({
 });
 export const deadlineHot = style({ color: vars.color.accent, borderColor: vars.color.accent });
 
+export const controls = style({
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+});
+export const networkPick = style({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "13px",
+  fontFamily: vars.font.mono,
+  color: vars.color.muted,
+});
+export const select = style({
+  appearance: "none",
+  background: vars.color.surface,
+  color: vars.color.text,
+  border: `1px solid ${vars.color.border}`,
+  borderRadius: "999px",
+  padding: "6px 14px",
+  fontFamily: vars.font.mono,
+  fontSize: "13px",
+  cursor: "pointer",
+});
+
 const cardBase = {
   background: vars.color.surface,
   border: `1px solid ${vars.color.border}`,

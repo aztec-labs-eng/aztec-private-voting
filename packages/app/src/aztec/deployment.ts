@@ -40,13 +40,19 @@ function isCurrent(d: Deployment | undefined): d is Deployment {
   );
 }
 
+/** All current deployments (one per `src/deployments/<network>.json`), local first. */
+export function loadDeployments(): Deployment[] {
+  return Object.entries(files)
+    .filter(([, d]) => {
+      if (isCurrent(d)) return true;
+      console.warn("Ignoring an outdated deployment file. Re-run `npm run deploy`.");
+      return false;
+    })
+    .map(([, d]) => d)
+    .sort((a, b) => (a.network === "local" ? -1 : b.network === "local" ? 1 : a.network.localeCompare(b.network)));
+}
+
+/** The default deployment (local if present, else the first available). */
 export function loadDeployment(): Deployment | null {
-  // Prefer local, else whatever single deployment exists.
-  const candidate = files["../deployments/local.json"] ?? Object.values(files)[0];
-  if (!candidate) return null;
-  if (!isCurrent(candidate)) {
-    console.warn("Ignoring an outdated deployment file. Re-run `npm run deploy`.");
-    return null;
-  }
-  return candidate;
+  return loadDeployments()[0] ?? null;
 }

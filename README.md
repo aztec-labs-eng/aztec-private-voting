@@ -120,3 +120,21 @@ The site inlines named regions via `#include_code` (fail-closed). Current region
 
 `snippetRoots` should point at `packages/contracts/contract/`, `packages/app/src/`, and
 `scripts/`. Commands in content use `npm run …`.
+
+## TODO / follow-ups
+
+- **Drop the vendored `lib/aztec-kit/`** (bridging + in-process-network test helpers) once
+  aztec.js ships equivalents — then import them from `@aztec/aztec.js` and delete the folder.
+- **Remove the per-package `packages/contracts/.aztecrc`** once the upstream `aztec-up` bug is
+  fixed: the npm `@aztec/aztec` launcher only looks for `.aztecrc` in the *current* directory,
+  so in a workspace (where `.aztecrc` is at the repo root and `npm run` builds run from the
+  package dir) it bypasses the pinned toolchain and transpiles with a mismatched `node_modules`
+  `bb` → "different wire format". The real fix is to make the launcher resolve `.aztecrc` by
+  walking up the tree (like `nvm`/`git`); the per-package `.aztecrc` is a stopgap until then.
+- **Testnet bridging deploy** (`npm run deploy:testnet`) is type- and API-verified against
+  4.3.0 but not yet run end-to-end against the live testnet (needs Sepolia L1 + the fee-juice
+  faucet). Shake it out once before relying on it.
+- **E2E (Playwright) tier** is still a stub — wire it up against a local network as a side quest.
+- **Reconcile committed artifacts vs `target/`:** `artifacts/PrivateVoting.ts` imports
+  `../target/*.json`, which is gitignored — a fresh clone must `npm run compile` before the TS
+  resolves. Decide whether to commit the compiled JSON or codegen on install.

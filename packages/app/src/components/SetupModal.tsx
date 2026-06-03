@@ -20,20 +20,56 @@ function stateFor(stepKey: SetupPhase, phase: SetupPhase, error: boolean): StepS
   return "pending";
 }
 
+export interface NetworkChoice {
+  key: string;
+  network: string;
+  nodeUrl: string;
+}
+
 export function SetupModal({
+  networks,
+  selectedKey,
   phase,
   error,
+  onSelect,
+  onBack,
   onEnter,
 }: {
+  networks: NetworkChoice[];
+  selectedKey: string | null;
   phase: SetupPhase;
   error: string | null;
+  onSelect: (key: string) => void;
+  onBack: () => void;
   onEnter: () => void;
 }) {
+  // ── Network chooser: shown when nothing is selected yet (multiple deployments). ──
+  if (!selectedKey) {
+    return (
+      <div className={css.backdrop} role="dialog" aria-modal="true">
+        <div className={css.dialog}>
+          <div>
+            <h2 className={css.title}>Choose a network</h2>
+            <p className={css.subtitle}>
+              This app is deployed to more than one network. Pick which one to connect to.
+            </p>
+          </div>
+          <div className={css.choices}>
+            {networks.map((n) => (
+              <button key={n.key} className={css.choice} onClick={() => onSelect(n.key)}>
+                <span className={css.choiceName}>{n.network}</span>
+                <span className={css.choiceUrl}>{n.nodeUrl}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Connection steps for the selected network. ──
   const done = phase === "done";
-  const steps: Step[] = SETUP_STEPS.map((s) => ({
-    ...s,
-    state: stateFor(s.key, phase, !!error),
-  }));
+  const steps: Step[] = SETUP_STEPS.map((s) => ({ ...s, state: stateFor(s.key, phase, !!error) }));
 
   return (
     <div className={css.backdrop} role="dialog" aria-modal="true">
@@ -53,6 +89,11 @@ export function SetupModal({
         {done && (
           <button className={css.button} onClick={onEnter}>
             Enter the booth
+          </button>
+        )}
+        {error && networks.length > 1 && (
+          <button className={css.secondary} onClick={onBack}>
+            ← Choose another network
           </button>
         )}
       </div>
