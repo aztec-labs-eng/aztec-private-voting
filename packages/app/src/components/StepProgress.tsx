@@ -9,9 +9,10 @@ export interface Step {
   state: StepState;
 }
 
+// `active` shows no glyph — the dot ring spins (see dotState.active).
 const GLYPH: Record<StepState, string> = {
   pending: "",
-  active: "...",
+  active: "",
   done: "✓",
   error: "!",
 };
@@ -26,9 +27,11 @@ export function StepProgress({ steps }: { steps: Step[] }) {
       {steps.map((step, i) => (
         <div className={css.row} key={step.key}>
           <span className={`${css.dot} ${css.dotState[step.state]}`}>
-            {step.state === "done" || step.state === "error" || step.state === "active"
+            {step.state === "done" || step.state === "error"
               ? GLYPH[step.state]
-              : i + 1}
+              : step.state === "active"
+                ? ""
+                : i + 1}
           </span>
           <span className={css.labels}>
             <span className={`${css.label} ${css.labelState[step.state]}`}>{step.label}</span>

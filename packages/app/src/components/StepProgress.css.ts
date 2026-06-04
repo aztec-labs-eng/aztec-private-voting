@@ -17,18 +17,17 @@ export const row = style({
   gap: "12px",
 });
 
-const pulse = keyframes({
-  "0%, 100%": { opacity: 1 },
-  "50%": { opacity: 0.35 },
-});
+const spin = keyframes({ to: { transform: "rotate(360deg)" } });
 
 export const dot = style({
   width: "22px",
   height: "22px",
   borderRadius: "50%",
   flexShrink: 0,
+  boxSizing: "border-box",
   display: "grid",
   placeItems: "center",
+  lineHeight: 1,
   fontSize: "13px",
   fontWeight: 700,
   border: `2px solid ${vars.color.border}`,
@@ -36,10 +35,11 @@ export const dot = style({
 
 export const dotState = styleVariants({
   pending: { color: vars.color.muted },
+  // The active dot is the spinner itself — one accent arc on the ring, rotating.
+  // No glyph, so nothing to mis-align vertically.
   active: {
-    borderColor: vars.color.accent,
-    color: vars.color.accent,
-    animation: `${pulse} 1.1s ease-in-out infinite`,
+    borderTopColor: vars.color.accent,
+    animation: `${spin} 0.8s linear infinite`,
   },
   done: {
     borderColor: vars.color.ok,

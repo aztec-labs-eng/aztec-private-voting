@@ -10,7 +10,7 @@ const STEPS = [
   },
   {
     name: "Proving",
-    desc: "Generating a zero-knowledge proof of the vote in your browser. This is the slow part.",
+    desc: "Generating a zero-knowledge proof of the vote in your browser.",
   },
   {
     name: "Sending",

@@ -15,6 +15,7 @@ import { SetupModal } from "./components/SetupModal.tsx";
 import { VoteChart, type Slice } from "./components/VoteChart.tsx";
 import { Feed, type FeedRow } from "./components/Feed.tsx";
 import { VoteModal } from "./components/VoteModal.tsx";
+import { ErrorModal } from "./components/ErrorModal.tsx";
 import { vars } from "./theme.css.ts";
 import * as css from "./App.css.ts";
 
@@ -113,12 +114,14 @@ export default function App() {
       });
   }, [deployment, load]);
 
-  // Poll the tally + feed so votes from other sessions show up.
+  // Poll the tally + feed so votes from other sessions show up. Paused while a
+  // vote is in flight (`busy`) so refreshes don't pile up during proving/sending;
+  // the vote does its own refresh on completion and polling resumes after.
   useEffect(() => {
-    if (!ready || !deployment) return;
+    if (!ready || !deployment || busy) return;
     const t = setInterval(() => void load(ready, deployment, { silent: true }), 5000);
     return () => clearInterval(t);
-  }, [ready, deployment, load]);
+  }, [ready, deployment, busy, load]);
 
   const vote = useCallback(
     async (candidateId: string) => {
@@ -204,6 +207,8 @@ export default function App() {
 
       {busy && <VoteModal candidateName={nameOf(BigInt(busy))} />}
 
+      {error && <ErrorModal message={error} onDismiss={() => setError(null)} />}
+
       <main className={css.page}>
         <header className={css.header}>
           <h1 className={css.h1}>Private Voting</h1>
@@ -276,7 +281,6 @@ export default function App() {
             <Feed rows={feedRows} />
 
             <footer className={css.footer}>
-              {error && <span className={css.errorText}>{error}</span>}
               {ready && <span className={css.addr}>voting as {ready.session.address.toString()}</span>}
             </footer>
           </>
