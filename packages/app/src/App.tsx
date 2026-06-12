@@ -24,27 +24,6 @@ const deployments = loadDeployments();
 // Candidate colors, by position.
 const COLORS = [vars.color.accent, "#5ec8f0", "#f06ec8", "#f5b53c"];
 
-function formatRemaining(ms: number): string {
-  if (ms <= 0) return "Voting closed";
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h left`;
-  if (h > 0) return `${h}h ${m}m left`;
-  return `${m}m ${s % 60}s left`;
-}
-
-function useCountdown(deadline: string | undefined): string | null {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  if (!deadline) return null;
-  return formatRemaining(new Date(deadline).getTime() - now);
-}
-
 export default function App() {
   // Active deployment, keyed by contract address. With more than one deployment
   // we start with *no* selection, so nothing connects until the user picks a
@@ -74,8 +53,6 @@ export default function App() {
   const ready = key ? (readyByKey[key] ?? null) : null;
   const entered = key ? !!enteredByKey[key] : false;
   const candidates = deployment?.candidates ?? [];
-  const countdown = useCountdown(deployment?.deadline);
-  const closed = countdown === "Voting closed";
 
   // Read-only refresh of the public tally + VoteCast feed. `silent` skips the
   // loading indicator so the background poll doesn't flicker the UI.
@@ -218,9 +195,6 @@ export default function App() {
           </p>
           {deployment && (
             <div className={css.controls}>
-              <span className={`${css.deadline} ${closed ? "" : css.deadlineHot}`}>
-                ⏳ {countdown}
-              </span>
               {deployments.length > 1 && (
                 <label className={css.networkPick}>
                   network

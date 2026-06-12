@@ -46,9 +46,6 @@ const CANDIDATES = [
   { id: 2n, name: "Jack Johnson" },
   { id: 3n, name: "Richard Nixon's Head" },
 ];
-// Cosmetic voting deadline shown as a countdown in the UI (display-only; the
-// admin actually closes voting on-chain via `end_vote`).
-const VOTING_WINDOW_DAYS = 7;
 // How much fee juice to bridge into the SponsoredFPC on non-local networks. It
 // sponsors every visitor's vote, so size it for the demo (faucet may cap it).
 const SPONSOR_FUND_AMOUNT = BigInt("1000000000000000000000"); // 1000 FJ
@@ -147,7 +144,6 @@ async function main() {
     salt: salt.toString(),
     electionId: ELECTION_ID.toString(),
     candidates: CANDIDATES.map((c) => ({ id: c.id.toString(), name: c.name })),
-    deadline: new Date(Date.now() + VOTING_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString(),
   };
   const outDir = join(import.meta.dirname, "..", "packages", "app", "src", "deployments");
   mkdirSync(outDir, { recursive: true });

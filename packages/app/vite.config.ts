@@ -20,6 +20,6 @@ export default defineConfig({
     vanillaExtractPlugin(),
     nodePolyfills({ include: ["buffer"] }),
   ],
-  server: { port: 5173, strictPort: true, headers: crossOriginIsolation },
+  server: { headers: crossOriginIsolation },
   preview: { headers: crossOriginIsolation },
 });
