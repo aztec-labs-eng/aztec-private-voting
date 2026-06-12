@@ -100,12 +100,25 @@ toolchain version also lives in **`.aztecrc`**, so `aztec-up use` (no argument) 
 
 | Branch | Aztec version |
 | --- | --- |
-| `main` | **4.3.0** (stable) |
-| `next` | latest **v5 nightly** |
+| `main` | **v5** release cycle — currently `5.0.0-nightly.20260612` |
+| `next` | reserved for **v6** |
 
 ```bash
 aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
 ```
+
+> **Bumping the version:** `npm run update -- --version <v>`, update both `.aztecrc`
+> files, `aztec-up install <v>`, `npm install`, then **clear the stale `bb` VK cache and
+> recompile** before testing:
+>
+> ```bash
+> rm -rf ~/.bb packages/contracts/target && npm run build:contracts
+> ```
+>
+> Skipping that bites: `bb` caches verification keys under `~/.bb/<bb-version>/`, and a
+> VK left over from a different toolchain surfaces as `verification key has wrong size`
+> (or "function artifact not found") in the TXE / integration tests. Always clean-recompile
+> on a version change.
 
 > To re-pin to a new version: `npm run update -- --version <v>`, update `.aztecrc`,
 > then `aztec-up install <v>`, `npm install`, and `npm run build:contracts`.

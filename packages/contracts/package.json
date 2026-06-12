@@ -15,7 +15,7 @@
     "test": "aztec test"
   },
   "dependencies": {
-    "@aztec/aztec.js": "v4.3.0",
-    "@aztec/stdlib": "v4.3.0"
+    "@aztec/aztec.js": "v5.0.0-nightly.20260612",
+    "@aztec/stdlib": "v5.0.0-nightly.20260612"
   }
 }

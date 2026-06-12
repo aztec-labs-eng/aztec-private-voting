@@ -29,7 +29,6 @@ import { Fr } from "@aztec/aztec.js/fields";
 import { GENESIS_ARCHIVE_ROOT } from "@aztec/constants";
 import { getL1ContractsConfigEnvVars } from "@aztec/ethereum/config";
 import { deployAztecL1Contracts } from "@aztec/ethereum/deploy-aztec-l1-contracts";
-import { EthCheatCodesWithState } from "@aztec/ethereum/test";
 import { SecretValue } from "@aztec/foundation/config";
 import { EthAddress } from "@aztec/foundation/eth-address";
 import { TestDateProvider } from "@aztec/foundation/timer";
@@ -41,7 +40,6 @@ import {
   getConfigEnvVars as getTelemetryConfig,
 } from "@aztec/telemetry-client";
 import { getGenesisValues } from "@aztec/world-state/testing";
-import { AnvilTestWatcher } from "@aztec/aztec/testing";
 import { CppPublicTxSimulator } from "@aztec/simulator/server";
 
 // v5 routes every public-tx simulation through `@aztec/native`'s native AVM
@@ -131,8 +129,9 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
   const privateKey: Hex = `0x${Buffer.from(hdAccount.getHdKey().privateKey!).toString("hex")}`;
 
   // ── 3. Base node config ────────────────────────────────────────────
-  //    Aligned with the e2e reference: test-only flags, fixed coinbase,
-  //    minTxsPerBlock=1 so account-deploy txs land reliably in block 1.
+  //    Test-only flags, fixed coinbase, minTxsPerBlock=1 so account-deploy txs
+  //    land reliably. `useAutomineSequencer` drives block production inline (the
+  //    old external AnvilTestWatcher was removed upstream around 20260612).
   const config: AztecNodeConfig = {
     ...getAztecNodeConfigEnvVars(),
     l1RpcUrls: [rpcUrl],
@@ -141,7 +140,7 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     validatorPrivateKeys: new SecretValue<Hex[]>([privateKey]),
     coinbase: EthAddress.fromString(privateKeyToAddress(privateKey)),
     realProofs: false,
-    enforceTimeTable: false,
+    useAutomineSequencer: true,
     enableDelayer: true,
     listenAddress: "127.0.0.1",
     minTxPoolAgeMs: 0,
@@ -151,7 +150,7 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
 
   // ── 4. Genesis ─────────────────────────────────────────────────────
   const fundedAddresses = opts.fundedAddresses ?? [];
-  const { genesisArchiveRoot, prefilledPublicData, fundingNeeded } = await getGenesisValues(
+  const { genesisArchiveRoot, genesis, fundingNeeded } = await getGenesisValues(
     fundedAddresses,
     opts.initialAccountFeeJuice,
   );
@@ -170,32 +169,24 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     feeJuicePortalInitialBalance: fundingNeeded,
     realVerifier: false,
   });
-  // 4.3.0 keeps the L1 addresses nested under `config.l1Contracts` (the node
-  // reads `config.l1Contracts.registryAddress` to discover the rest via the
-  // registry). v5 later flattened these onto the config root.
-  config.l1Contracts = deployL1.l1ContractAddresses;
+  // v5 flattened the L1 addresses onto `AztecNodeConfig` (via L1ReaderConfig
+  // extending L1ContractAddresses), so we spread them rather than nesting
+  // under a `l1Contracts` key.
+  Object.assign(config, deployL1.l1ContractAddresses);
   config.rollupVersion = deployL1.rollupVersion;
 
-  // ── 6. Watcher ─────────────────────────────────────────────────────
-  const watcher = new AnvilTestWatcher(
-    new EthCheatCodesWithState([rpcUrl], dateProvider),
-    deployL1.l1ContractAddresses.rollupAddress,
-    deployL1.l1Client,
-    dateProvider,
-  );
-  await watcher.start();
-
-  // ── 7. Node ────────────────────────────────────────────────────────
+  // ── 6. Node ────────────────────────────────────────────────────────
+  //    The automine sequencer (config above) builds blocks inline; no external
+  //    watcher is needed since ~20260612.
   const telemetry = await initTelemetryClient(getTelemetryConfig());
   const node = await AztecNodeService.createAndSync(
     config,
     { telemetry, dateProvider },
-    { prefilledPublicData },
+    { genesis },
   );
 
   const stop = async () => {
     await node.stop();
-    await watcher.stop();
     await stopAnvil();
   };
 
