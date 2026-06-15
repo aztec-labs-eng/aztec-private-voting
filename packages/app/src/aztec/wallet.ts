@@ -1,22 +1,20 @@
 /**
  * Browser wallet setup.
  *
- * Connects to the Aztec node, spins up an in-browser `EmbeddedWallet`, and gives
- * it an account whose secret + salt are persisted in localStorage. On reload we
- * reconstruct the same account and skip the on-chain deploy if it already exists,
- * so a visitor keeps one identity — and therefore one vote per election (the
- * nullifier enforces the rest; reloading does not buy you another vote). Fees are
- * paid by the SponsoredFPC, so the visitor needs no fee juice.
+ * Connects to the node, spins up an in-browser `EmbeddedWallet`, and gives it a
+ * Schnorr *initializerless* account: it needs **no on-chain deployment** (the
+ * account contract has no initializer), so it can send transactions straight away
+ * with fees sponsored by the SponsoredFPC — the visitor needs no fee juice and
+ * there's no account-deploy step. The account's secret + salt are persisted in
+ * localStorage and reconstructed on reload, so a visitor keeps one identity (and
+ * therefore one vote per election; the nullifier enforces the rest).
  */
 import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
-import { NO_FROM } from "@aztec/aztec.js/account";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
-import { ContractInitializationStatus } from "@aztec/aztec.js/wallet";
 import { deriveSigningKey } from "@aztec/stdlib/keys";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
-import { TxStatus } from "@aztec/stdlib/tx";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
@@ -76,26 +74,18 @@ export async function connect(
   await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
   const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFPC.address);
 
-  // 2. Reconstruct the saved account (or mint a new one) and register it.
+  // 2. Reconstruct (or mint) the saved account. Initializerless = no deploy tx:
+  //    creating it registers it in our PXE and it's immediately usable.
   onPhase?.("account");
   const saved = loadStoredAccount();
   const secret = saved?.secret ?? Fr.random();
   const salt = saved?.salt ?? Fr.random();
-  const account = await wallet.createSchnorrAccount(secret, salt, deriveSigningKey(secret));
+  const account = await wallet.createSchnorrInitializerlessAccount(
+    secret,
+    salt,
+    deriveSigningKey(secret),
+  );
   storeAccount(secret, salt);
-
-  // Deploy it only if it isn't already on-chain — return visits skip this entirely.
-  const { initializationStatus } = await wallet.getContractMetadata(account.address);
-  if (initializationStatus !== ContractInitializationStatus.INITIALIZED) {
-    const deployMethod = await account.getDeployMethod();
-    await deployMethod.send({
-      from: NO_FROM,
-      fee: { paymentMethod },
-      skipClassPublication: true,
-      skipInstancePublication: true,
-      wait: { waitForStatus: TxStatus.PROPOSED, timeout: 120 },
-    });
-  }
 
   return { wallet, node, address: account.address, paymentMethod };
 }

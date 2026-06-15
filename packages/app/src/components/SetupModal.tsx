@@ -5,7 +5,7 @@ import * as css from "./SetupModal.css.ts";
 // What the modal teaches: every step the app takes before you can vote.
 const SETUP_STEPS: { key: SetupPhase; label: string; description: string }[] = [
   { key: "connect", label: "Connect to the network", description: "Open an in-browser wallet" },
-  { key: "account", label: "Create your account", description: "A fresh private account, deployed with sponsored fees" },
+  { key: "account", label: "Create your account", description: "An initializerless account — no on-chain deploy needed" },
   { key: "register", label: "Register the contract", description: "Teach your PXE about the deployed voting contract" },
 ];
 

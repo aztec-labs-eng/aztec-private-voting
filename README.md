@@ -100,7 +100,7 @@ toolchain version also lives in **`.aztecrc`**, so `aztec-up use` (no argument) 
 
 | Branch | Aztec version |
 | --- | --- |
-| `main` | **v5** release cycle — currently `5.0.0-nightly.20260612` |
+| `main` | **v5** release cycle — currently `5.0.0-nightly.20260615` |
 | `next` | reserved for **v6** |
 
 ```bash
@@ -119,9 +119,11 @@ aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
 > VK left over from a different toolchain surfaces as `verification key has wrong size`
 > (or "function artifact not found") in the TXE / integration tests. Always clean-recompile
 > on a version change.
-
-> To re-pin to a new version: `npm run update -- --version <v>`, update `.aztecrc`,
-> then `aztec-up install <v>`, `npm install`, and `npm run build:contracts`.
+>
+> If a clean recompile *still* shows a VK size mismatch (e.g. compiler emits 5216 but the
+> TXE/`bb.js` expect 4576), the active toolchain's `bb` doesn't match the published npm
+> `bb.js` — e.g. you have a locally/privately-built toolchain installed under the same
+> version number. Reinstall the published one: `aztec-up uninstall <v> && aztec-up install <v>`.
 
 ## For the quickstart site
 

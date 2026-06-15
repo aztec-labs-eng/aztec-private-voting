@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
-import { deployFundedSchnorrAccounts } from "@aztec/wallets/testing";
+import { createFundedInitializerlessAccounts } from "@aztec/wallets/testing";
 import { getPublicEvents } from "@aztec/aztec.js/events";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
@@ -30,12 +30,13 @@ let admin: AztecAddress;
 let voting: PrivateVotingContract;
 
 beforeAll(async () => {
-  // Prefund the first test account at genesis and deploy its schnorr account.
+  // Prefund the first test account at genesis; as an initializerless account it
+  // needs no deploy tx — creating it registers the instance and it's usable.
   const [testAccount] = await getInitialTestAccountsData();
   admin = testAccount.address;
   network = await setupLocalNetwork({ fundedAddresses: [admin] });
   wallet = await EmbeddedWallet.create(network.node, { ephemeral: true });
-  await deployFundedSchnorrAccounts(wallet, [testAccount]);
+  await createFundedInitializerlessAccounts(wallet, [testAccount]);
 
   // Deploy PrivateVoting (registers class + instance + runs constructor) and
   // open the election. `deploy` also registers the instance with our PXE.
