@@ -20,7 +20,7 @@ packages/
     test/src/lib.nr       TXE unit tests  (separate crate, per aztec-packages#20681)
     artifacts/            committed codegen output (PrivateVoting.ts)
   app/                  React + Vite 8 + vanilla-extract frontend
-    src/App.tsx           candidate list, donut chart, deadline countdown
+    src/App.tsx           candidate list, donut chart, live event feed
     src/aztec/            the Aztec layer: wallet, voting (docs regions), setup, deployment
     src/components/       SetupModal, StepProgress, VoteChart
 scripts/

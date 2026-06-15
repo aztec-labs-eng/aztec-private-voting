@@ -14,21 +14,6 @@ export const header = style({ display: "flex", flexDirection: "column", gap: "10
 export const h1 = style({ margin: 0, fontSize: "32px", letterSpacing: "-0.02em" });
 export const lede = style({ margin: 0, color: vars.color.muted, lineHeight: 1.55, maxWidth: "60ch" });
 
-export const deadline = style({
-  alignSelf: "flex-start",
-  display: "inline-flex",
-  gap: "8px",
-  alignItems: "center",
-  fontSize: "13px",
-  fontFamily: vars.font.mono,
-  color: vars.color.muted,
-  background: vars.color.surface,
-  border: `1px solid ${vars.color.border}`,
-  borderRadius: "999px",
-  padding: "6px 14px",
-});
-export const deadlineHot = style({ color: vars.color.accent, borderColor: vars.color.accent });
-
 export const controls = style({
   display: "flex",
   alignItems: "center",

@@ -18,8 +18,6 @@ export interface Deployment {
   salt: string;
   electionId: string;
   candidates: Candidate[];
-  /** ISO timestamp; display-only countdown. */
-  deadline: string;
 }
 
 // Deployments are written by `npm run deploy` to `src/deployments/<network>.json`.
@@ -29,12 +27,12 @@ const files = import.meta.glob<Deployment>("../deployments/*.json", {
   import: "default",
 });
 
-/** Guards against an outdated deployment file from an older deploy script. */
+// Guards against an outdated deployment file from an older deploy script: the
+// format signal is the candidate shape ({id,name}).
 function isCurrent(d: Deployment | undefined): d is Deployment {
   return (
     !!d &&
     typeof d.contractAddress === "string" &&
-    typeof d.deadline === "string" &&
     Array.isArray(d.candidates) &&
     d.candidates.every((c) => c && typeof c === "object" && "id" in c && "name" in c)
   );
