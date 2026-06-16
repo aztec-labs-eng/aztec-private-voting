@@ -6,10 +6,10 @@ A deliberately small Aztec app that teaches the one idea Aztec is built around: 
 - Votes are cast in **private** — nobody learns who you voted for.
 - The only thing that ever becomes **public** is the aggregate **tally**.
 - A **nullifier** (one per election + voter) makes it impossible to vote twice,
-  without revealing that *you* were the one who voted.
+  without revealing that _you_ were the one who voted.
 
 This is the example app consumed by the Aztec quickstart website; it walks a learner
-through *install → clone → understand → test → deploy*.
+through _install → clone → understand → test → deploy_.
 
 ## Layout
 
@@ -35,7 +35,7 @@ Clear frontend↔contracts separation via plain **npm workspaces** — no yarn, 
 ## Prerequisites
 
 - **Node 24** (`nvm use` picks it up from `.nvmrc`).
-- The **Aztec toolchain** matching the pinned version (see *Versioning*): `aztec-up`.
+- The **Aztec toolchain** matching the pinned version (see _Versioning_): `aztec-up`.
 
 ## Commands
 
@@ -78,16 +78,16 @@ redeploying.
   **deployer** account, and once to fund the **SponsoredFPC** (a fully private contract;
   no publication, we just credit its address). The frontend then sponsors every visitor's
   vote through that FPC, so users need no fee juice of their own. Privacy note: the
-  *operator's* bridged funding links the operator's L1↔L2 txs, but visitors stay private —
+  _operator's_ bridged funding links the operator's L1↔L2 txs, but visitors stay private —
   their votes are nullifier-private and paid by the shared FPC.
 
 ## Test tiers
 
-| Tier | Where | Run with |
-| --- | --- | --- |
-| **TXE unit** | `packages/contracts/test/src/lib.nr` | `npm run test:contracts` (`aztec test`) |
-| **Integration** (in-process network) | `test/integration/` | `npm run test:integration` |
-| **E2E** (browser) | — | side-quest follow-up |
+| Tier                                 | Where                                | Run with                                |
+| ------------------------------------ | ------------------------------------ | --------------------------------------- |
+| **TXE unit**                         | `packages/contracts/test/src/lib.nr` | `npm run test:contracts` (`aztec test`) |
+| **Integration** (in-process network) | `test/integration/`                  | `npm run test:integration`              |
+| **E2E** (browser)                    | —                                    | side-quest follow-up                    |
 
 The unit tests cover the pedagogy directly: a vote bumps the tally, a **second vote from
 the same account fails on a duplicate nullifier**, and `end_vote` is admin-gated.
@@ -98,10 +98,10 @@ One Aztec version is the single source of truth per branch — every `@aztec/*` 
 the `Nargo.toml` git `tag` move together via `npm run update -- --version <v>`. The pinned
 toolchain version also lives in **`.aztecrc`**, so `aztec-up use` (no argument) selects it.
 
-| Branch | Aztec version |
-| --- | --- |
-| `main` | **v5** release cycle — currently `5.0.0-nightly.20260615` |
-| `next` | reserved for **v6** |
+| Branch | Aztec version                                 |
+| ------ | --------------------------------------------- |
+| `main` | **v5** release cycle — currently `5.0.0-rc.1` |
+| `next` | reserved for **v6**                           |
 
 ```bash
 aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
@@ -120,7 +120,7 @@ aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
 > (or "function artifact not found") in the TXE / integration tests. Always clean-recompile
 > on a version change.
 >
-> If a clean recompile *still* shows a VK size mismatch (e.g. compiler emits 5216 but the
+> If a clean recompile _still_ shows a VK size mismatch (e.g. compiler emits 5216 but the
 > TXE/`bb.js` expect 4576), the active toolchain's `bb` doesn't match the published npm
 > `bb.js` — e.g. you have a locally/privately-built toolchain installed under the same
 > version number. Reinstall the published one: `aztec-up uninstall <v> && aztec-up install <v>`.
@@ -129,11 +129,11 @@ aztec-up use            # reads .aztecrc -> switches to this branch's toolchain
 
 The site inlines named regions via `#include_code` (fail-closed). Current regions:
 
-| File | regions |
-| --- | --- |
-| `packages/contracts/contract/src/main.nr` | `storage_struct`, `cast_vote`, `add_to_tally` |
-| `packages/app/src/aztec/voting.ts` | `register_contract`, `simulate_query`, `send_vote` |
-| `scripts/deploy.ts` | `deploy_instance` |
+| File                                      | regions                                            |
+| ----------------------------------------- | -------------------------------------------------- |
+| `packages/contracts/contract/src/main.nr` | `storage_struct`, `cast_vote`, `add_to_tally`      |
+| `packages/app/src/aztec/voting.ts`        | `register_contract`, `simulate_query`, `send_vote` |
+| `scripts/deploy.ts`                       | `deploy_instance`                                  |
 
 `snippetRoots` should point at `packages/contracts/contract/`, `packages/app/src/`, and
 `scripts/`. Commands in content use `npm run …`.
@@ -143,7 +143,7 @@ The site inlines named regions via `#include_code` (fail-closed). Current region
 - **Drop the vendored `lib/aztec-kit/`** (bridging + in-process-network test helpers) once
   aztec.js ships equivalents — then import them from `@aztec/aztec.js` and delete the folder.
 - **Remove the per-package `packages/contracts/.aztecrc`** once the upstream `aztec-up` bug is
-  fixed: the npm `@aztec/aztec` launcher only looks for `.aztecrc` in the *current* directory,
+  fixed: the npm `@aztec/aztec` launcher only looks for `.aztecrc` in the _current_ directory,
   so in a workspace (where `.aztecrc` is at the repo root and `npm run` builds run from the
   package dir) it bypasses the pinned toolchain and transpiles with a mismatched `node_modules`
   `bb` → "different wire format". The real fix is to make the launcher resolve `.aztecrc` by

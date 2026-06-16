@@ -11,7 +11,7 @@
  * query the running app does (and re-does after every vote), shown inline in the UI.
  */
 import { connect, type Session } from "./wallet.ts";
-import { registerVoting, getTally } from "./voting.ts";
+import { registerVoting, assertVotingPublished, getTally } from "./voting.ts";
 import type { Deployment } from "./deployment.ts";
 import type { PrivateVotingContract } from "@app/contracts/PrivateVoting";
 
@@ -36,7 +36,8 @@ export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
-export const getPhase = (key: string): SetupPhase => phases.get(key) ?? "connect";
+export const getPhase = (key: string): SetupPhase =>
+  phases.get(key) ?? "connect";
 export const getError = (key: string): string | null => errors.get(key) ?? null;
 
 /** Forget a deployment's setup so a fresh `startSetup` retries it (e.g. after an error). */
@@ -54,7 +55,11 @@ export async function readTallies(
 ): Promise<Record<string, number>> {
   const entries = await Promise.all(
     deployment.candidates.map(
-      async (c) => [c.id, await getTally(voting, session, deployment, BigInt(c.id))] as const,
+      async (c) =>
+        [
+          c.id,
+          await getTally(voting, session, deployment, BigInt(c.id)),
+        ] as const,
     ),
   );
   return Object.fromEntries(entries);
@@ -69,6 +74,7 @@ export function startSetup(deployment: Deployment): Promise<SetupResult> {
     try {
       const session = await connect(deployment.nodeUrl, (ph) => emit(key, ph)); // "connect" -> "account"
       emit(key, "register");
+      await assertVotingPublished(session, deployment);
       const voting = await registerVoting(session, deployment);
       emit(key, "done");
       return { session, voting };

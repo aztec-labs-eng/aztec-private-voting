@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { sendVote, getVoteFeed, type VoteEvent } from "./aztec/voting.ts";
+import { sendVote, getVoteFeed, getMyVote, type VoteEvent } from "./aztec/voting.ts";
 import { loadDeployments } from "./aztec/deployment.ts";
 import {
   startSetup,
@@ -46,6 +46,9 @@ export default function App() {
   const [readyByKey, setReadyByKey] = useState<Record<string, SetupResult>>({});
   const [tallies, setTallies] = useState<Record<string, number>>({});
   const [feed, setFeed] = useState<VoteEvent[]>([]);
+  // The candidate *this* account voted for, read back from the private `Vote`
+  // event the contract delivered to us. null = haven't voted in this election.
+  const [myVote, setMyVote] = useState<bigint | null>(null);
   const [loadingTally, setLoadingTally] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,18 +57,21 @@ export default function App() {
   const entered = key ? !!enteredByKey[key] : false;
   const candidates = deployment?.candidates ?? [];
 
-  // Read-only refresh of the public tally + VoteCast feed. `silent` skips the
+  // Read-only refresh of the public tally + TallyUpdated feed + our own private
+  // vote. `silent` skips the
   // loading indicator so the background poll doesn't flicker the UI.
   const load = useCallback(
     async (r: SetupResult, dep: NonNullable<typeof deployment>, opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoadingTally(true);
       try {
-        const [t, f] = await Promise.all([
+        const [t, f, mv] = await Promise.all([
           readTallies(r.voting, r.session, dep),
           getVoteFeed(r.session, dep),
+          getMyVote(r.session, dep),
         ]);
         setTallies(t);
         setFeed(f);
+        setMyVote(mv);
       } catch {
         /* transient read error; the next poll will retry */
       } finally {
@@ -80,6 +86,7 @@ export default function App() {
     if (!deployment) return;
     setTallies({});
     setFeed([]);
+    setMyVote(null);
     setError(null);
     startSetup(deployment)
       .then((result) => {
@@ -142,6 +149,7 @@ export default function App() {
     );
   }
 
+  const hasVoted = myVote !== null;
   const total = Object.values(tallies).reduce((a, b) => a + b, 0);
   const slices: Slice[] = candidates.map((c, i) => ({
     name: c.name,
@@ -230,6 +238,7 @@ export default function App() {
                   const value = tallies[c.id] ?? 0;
                   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
                   const color = COLORS[i % COLORS.length];
+                  const votedForThis = myVote !== null && myVote === BigInt(c.id);
                   return (
                     <div className={css.candidateCard} style={{ borderTopColor: color }} key={c.id}>
                       <div className={css.candidateHead}>
@@ -238,6 +247,14 @@ export default function App() {
                           {value} {value === 1 ? "vote" : "votes"} · {pct}%
                         </span>
                       </div>
+                      {votedForThis && (
+                        <span className={css.votedBadge} style={{ color }}>
+                          ✓ your private vote
+                        </span>
+                      )}
+                      {/* Voting stays enabled even after you've voted: a second
+                          attempt lets the app showcase the protocol rejecting the
+                          duplicate nullifier. */}
                       <button
                         className={css.button}
                         style={{ background: color }}
@@ -255,6 +272,12 @@ export default function App() {
             <Feed rows={feedRows} />
 
             <footer className={css.footer}>
+              {hasVoted && (
+                <span className={css.status}>
+                  You privately voted for <strong>{nameOf(myVote!)}</strong> — read back from the
+                  private <code>Vote</code> event only your account can decrypt.
+                </span>
+              )}
               {ready && <span className={css.addr}>voting as {ready.session.address.toString()}</span>}
             </footer>
           </>

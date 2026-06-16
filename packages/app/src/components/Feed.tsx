@@ -9,11 +9,11 @@ export interface FeedRow {
   txShort: string;
 }
 
-/** Live feed of public VoteCast events, newest first. */
+/** Live feed of public TallyUpdated events, newest first. */
 export function Feed({ rows }: { rows: FeedRow[] }) {
   return (
     <div className={css.card}>
-      <h2 className={css.title}>Live feed · public VoteCast events</h2>
+      <h2 className={css.title}>Live feed · public TallyUpdated events</h2>
       {rows.length === 0 ? (
         <span className={css.empty}>No votes yet — cast one above.</span>
       ) : (

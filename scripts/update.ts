@@ -69,5 +69,18 @@ for (const file of findFiles("Nargo.toml")) {
   }
 }
 
+// .aztecrc: the aztec toolchain pins the active version here, without a leading
+// `v`. Keep it in sync so `aztec-up use` picks the same version as the deps.
+const aztecrcVersion = version.replace(/^v/, "");
+for (const file of findFiles(".aztecrc")) {
+  const original = readFileSync(file, "utf8");
+  // Preserve a trailing newline if the file had one.
+  const updated = aztecrcVersion + (original.endsWith("\n") ? "\n" : "");
+  if (updated !== original) {
+    writeFileSync(file, updated);
+    console.log(`updated version in ${file.replace(root + "/", "")}`);
+  }
+}
+
 console.log(`\nPinned Aztec version -> ${version}`);
 console.log(`Next: run \`aztec-up -v ${version.replace(/^v/, "")}\`, then \`npm install\` and \`npm run build:contracts\`.`);

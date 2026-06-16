@@ -64,15 +64,32 @@ describe("PrivateVoting (in-process network)", () => {
     expect(BigInt(result.toString())).toBe(1n);
   });
 
-  it("emits a public VoteCast event for the live feed", async () => {
+  it("emits a public TallyUpdated event for the live feed", async () => {
     const { events } = await getPublicEvents<{ candidate: bigint; tally: bigint }>(
       network.node,
-      PrivateVotingContract.events.VoteCast,
+      PrivateVotingContract.events.TallyUpdated,
       { contractAddress: voting.address },
     );
     expect(events.length).toBe(1);
     expect(BigInt(events[0].event.candidate)).toBe(ALICE_PICK.toBigInt());
     expect(BigInt(events[0].event.tally)).toBe(1n);
+  });
+
+  it("delivers a private Vote event only the voter can read", async () => {
+    // The contract emits `Vote` privately and delivers it on-chain to msg_sender,
+    // so our wallet can decrypt it for our own account but no one else can.
+    const events = await wallet.getPrivateEvents<{
+      election_id: bigint;
+      candidate: bigint;
+      voter: AztecAddress;
+    }>(PrivateVotingContract.events.Vote, {
+      contractAddress: voting.address,
+      scopes: [admin],
+    });
+    expect(events.length).toBe(1);
+    expect(BigInt(events[0].event.election_id)).toBe(ELECTION.id.toBigInt());
+    expect(BigInt(events[0].event.candidate)).toBe(ALICE_PICK.toBigInt());
+    expect(events[0].event.voter.toString()).toBe(admin.toString());
   });
 
   it("rejects a second vote from the same account (duplicate nullifier)", async () => {

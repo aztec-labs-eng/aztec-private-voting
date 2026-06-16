@@ -9,7 +9,12 @@ use aztec::macros::aztec;
 /// private split guarded by a nullifier is the whole point of building on Aztec.
 #[aztec]
 pub contract PrivateVoting {
-    use aztec::macros::{events::event, functions::{external, initializer, only_self, view}, storage::storage};
+    use aztec::macros::{
+        events::event,
+        functions::{external, initializer, only_self, view},
+        storage::storage,
+    };
+    use aztec::messages::delivery::MessageDelivery;
     use aztec::protocol::{address::AztecAddress, traits::{Deserialize, Serialize, ToField}};
     use aztec::state_vars::{Map, Owned, PublicImmutable, PublicMutable, SingleUseClaim};
 
@@ -18,17 +23,28 @@ pub contract PrivateVoting {
         id: Field,
     }
 
-    // docs:start:vote_cast_event
+    // docs:start:tally_updated_event
     /// Emitted publicly every time a vote is counted, so a UI can show a live feed.
     /// Public (no `deliver_to`): anyone can read it, it reveals only the candidate and
     /// the running tally, never the voter.
     #[event]
-    pub struct VoteCast {
+    pub struct TallyUpdated {
         election_id: Field,
         candidate: Field,
         tally: Field,
     }
-    // docs:end:vote_cast_event
+    // docs:end:tally_updated_event
+
+    // docs:start:vote_event
+    /// Emitted privately so the user can check
+    /// whom they voted for
+    #[event]
+    pub struct Vote {
+        election_id: Field,
+        candidate: Field,
+        voter: AztecAddress,
+    }
+    // docs:end:vote_event
 
     impl ElectionId {
         pub fn new(id: Field) -> Self {
@@ -71,6 +87,10 @@ pub contract PrivateVoting {
         // same account produces the same nullifier, which the protocol rejects, so each
         // account can vote at most once per election, without revealing *who* voted.
         self.storage.vote_claims.at(election_id).at(self.msg_sender()).claim();
+        // Emit a private event so we remember who we voted for
+        self
+            .emit(Vote { election_id: election_id.to_field(), candidate, voter: self.msg_sender() })
+            .deliver_to(self.msg_sender(), MessageDelivery::onchain_unconstrained());
         // The vote itself stays private; we only enqueue a public bump of the aggregate tally.
         self.enqueue_self._add_to_tally_public(election_id, candidate);
     }
@@ -85,7 +105,7 @@ pub contract PrivateVoting {
         let new_tally = self.storage.tally.at(election_id).at(candidate).read() + 1;
         self.storage.tally.at(election_id).at(candidate).write(new_tally);
         // Emit a public event so a UI can show a live feed of votes as they land.
-        self.emit(VoteCast { election_id: election_id.to_field(), candidate, tally: new_tally });
+        self.emit(TallyUpdated { election_id: election_id.to_field(), candidate, tally: new_tally });
     }
     // docs:end:add_to_tally
 

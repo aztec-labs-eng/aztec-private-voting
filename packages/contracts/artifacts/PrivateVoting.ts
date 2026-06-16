@@ -13,7 +13,14 @@ import PrivateVotingContractArtifactJson from '../target/private_voting-PrivateV
 export const PrivateVotingContractArtifact = loadContractArtifact(PrivateVotingContractArtifactJson as NoirCompiledContract);
 
 
-      export type VoteCast = {
+      export type Vote = {
+        election_id: FieldLike
+candidate: FieldLike
+voter: AztecAddressLike
+      }
+    
+
+      export type TallyUpdated = {
         election_id: FieldLike
 candidate: FieldLike
 tally: FieldLike
@@ -151,9 +158,46 @@ vote_claims: {
   };
 
   
-    public static get events(): { VoteCast: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
+    public static get events(): { Vote: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] }, TallyUpdated: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
     return {
-      VoteCast: {
+      Vote: {
+        abiType: {
+    "kind": "struct",
+    "fields": [
+        {
+            "name": "election_id",
+            "type": {
+                "kind": "field"
+            }
+        },
+        {
+            "name": "candidate",
+            "type": {
+                "kind": "field"
+            }
+        },
+        {
+            "name": "voter",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "inner",
+                        "type": {
+                            "kind": "field"
+                        }
+                    }
+                ],
+                "path": "aztec::protocol_types::address::aztec_address::AztecAddress"
+            }
+        }
+    ],
+    "path": "PrivateVoting::Vote"
+},
+        eventSelector: EventSelector.fromString("0xb5382344"),
+        fieldNames: ["election_id","candidate","voter"],
+      },
+TallyUpdated: {
         abiType: {
     "kind": "struct",
     "fields": [
@@ -176,9 +220,9 @@ vote_claims: {
             }
         }
     ],
-    "path": "PrivateVoting::VoteCast"
+    "path": "PrivateVoting::TallyUpdated"
 },
-        eventSelector: EventSelector.fromString("0xdaea5acc"),
+        eventSelector: EventSelector.fromString("0xedc1077e"),
         fieldNames: ["election_id","candidate","tally"],
       }
     };

@@ -100,6 +100,19 @@ export const button = style({
   selectors: { "&:disabled": { opacity: 0.35, cursor: "not-allowed" } },
 });
 
+export const votedBadge = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  padding: "10px 14px",
+  borderRadius: vars.radius.md,
+  border: `1px dashed ${vars.color.border}`,
+  fontFamily: vars.font.mono,
+  fontSize: "13px",
+  fontWeight: 700,
+});
+
 export const footer = style({ display: "flex", flexDirection: "column", gap: "6px" });
 export const status = style({ fontSize: "13px", color: vars.color.muted, fontFamily: vars.font.mono });
 export const errorText = style({ color: vars.color.error, fontSize: "13px" });
