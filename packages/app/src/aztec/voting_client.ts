@@ -40,10 +40,6 @@ export interface VoteEvent {
   txHash: string;
 }
 
-// ── Account persistence ──────────────────────────────────────────────────────
-// The PXE stays ephemeral; we persist just the account's secret + salt so a
-// visitor keeps one identity across reloads (and therefore one vote per election;
-// the nullifier enforces the rest).
 const ACCOUNT_KEY = "private-voting:account";
 
 function loadStoredAccount(): { secret: Fr; salt: Fr } | null {
@@ -87,11 +83,11 @@ export class VotingClient {
   }
 
   /**
-   * CONNECT: open an in-browser wallet (its own PXE) against the network's node,
+   * CONNECT: open an in-browser wallet against the network's node,
    * give it a Schnorr *initializerless* account — no on-chain deploy, so it can
-   * transact straight away with fees sponsored by the SponsoredFPC — then bind the
-   * deployed voting contract. Everything the network choice dictates (contract,
-   * account, payment method) is captured here and kept private to the client.
+   * transact straight away. Then bind the deployed voting contract.
+   * Everything the network choice dictates (contract, account, payment method)
+   * is captured here.
    */
   static async connect(
     deployment: Deployment,
@@ -101,7 +97,6 @@ export class VotingClient {
     onPhase?.("connect");
     const node = createAztecNodeClient(deployment.nodeUrl);
     const wallet = await EmbeddedWallet.create(node, {
-      ephemeral: true,
       pxe: { proverEnabled: !deployment.nodeUrl.includes("localhost") },
     });
 
@@ -146,13 +141,8 @@ export class VotingClient {
    * REGISTER: teach our PXE about the deployed contract. The voting contract is
    * published on chain (its constructor is a public `#[initializer]`), so instead of
    * rebuilding the instance from deploy params we just ask the node for it with
-   * `getContract(address)` and hand that to the wallet — no local guesswork, and the
-   * deployment JSON only needs the address.
+   * `getContract(address)` and hand that to the wallet
    *
-   * This doubles as cheap protection against a missing deployment: `getContract`
-   * returns `undefined` when the node has never seen the address, so we fail loudly
-   * here rather than let the first vote blow up deep inside proving with an opaque
-   * "unknown nullifier" error.
    */
   private static async register(
     wallet: EmbeddedWallet,
@@ -198,18 +188,18 @@ export class VotingClient {
    */
   async readTallies(): Promise<Record<string, number>> {
     const { candidates } = this.deployment;
-    const batch = new BatchCall(
-      this.wallet,
-      candidates.map((c) =>
-        this.voting.methods.get_tally(
-          election(this.deployment),
-          new Fr(BigInt(c.id)),
-        ),
+    const getTallyInteractions = candidates.map((c) =>
+      this.voting.methods.get_tally(
+        election(this.deployment),
+        new Fr(BigInt(c.id)),
       ),
     );
-    const { result } = await batch.simulate({ from: this.account });
+    const batch = new BatchCall(this.wallet, getTallyInteractions);
+    const { result: batchResult } = await batch.simulate({
+      from: this.account,
+    });
     return Object.fromEntries(
-      candidates.map((c, i) => [c.id, Number(result[i].result)]),
+      candidates.map((c, i) => [c.id, Number(batchResult[i].result)]),
     );
   }
   // docs:end:simulate_query
@@ -222,7 +212,6 @@ export class VotingClient {
    * use them to build a live feed of votes as they land.
    */
   async getFeed(): Promise<VoteEvent[]> {
-    // Field values decode to bigint at runtime, so we type the event accordingly.
     const { events } = await getPublicEvents<{
       candidate: bigint;
       tally: bigint;
@@ -244,13 +233,12 @@ export class VotingClient {
   /**
    * QUERY PRIVATE EVENTS: read the private `Vote` events the contract delivered to
    * *us* when we cast a vote. Unlike the public `TallyUpdated` feed, each `Vote` is
-   * encrypted to the voter and only retrievable by the account it was delivered to:
-   * `wallet.getPrivateEvents` returns just the ones in our scope. We use it to
-   * remind the user which candidate they picked — something no one else can see.
+   * encrypted to the voter and only retrievable by the account it was delivered to.
+   * We use it to remind the user which candidate they picked, which something no one
+   * else can see.
    *
    * Returns the candidate this account voted for in the deployment's election, or
-   * `null` if they haven't voted yet (a nullifier means at most one vote per
-   * election, so there is never more than one).
+   * `null` if they haven't voted yet
    */
   async getMyVote(): Promise<bigint | null> {
     const events = await this.wallet.getPrivateEvents<{
