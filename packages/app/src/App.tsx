@@ -254,7 +254,7 @@ export default function App() {
                             {value} {value === 1 ? "vote" : "votes"} · {pct}%
                           </span>
                           {votedForThis && (
-                            <span className={css.votedTag} style={{ color }}>
+                            <span className={css.votedTag} style={{ background: color }}>
                               ✓ your private vote
                             </span>
                           )}

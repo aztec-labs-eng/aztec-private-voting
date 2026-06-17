@@ -86,21 +86,28 @@ export const candidateCard = style({
 
 export const candidateHead = style({ display: "flex", flexDirection: "column", gap: "4px" });
 export const name = style({ fontWeight: 700, fontSize: "17px" });
-// Count + optional "voted" tag on one row, so the tag never changes the card's
-// height (no layout jump when a vote lands).
+// Count + optional "voted" tag on one row, with the row height reserved so the
+// tag never changes the card's height (no layout jump when a vote lands).
 export const countRow = style({
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "8px",
-  minHeight: "18px",
+  minHeight: "24px",
 });
 export const count = style({ fontFamily: vars.font.mono, fontSize: "13px", color: vars.color.muted });
+// A filled pill in the candidate's color (background set inline), so the "voted"
+// marker reads loudly without taking a full row.
 export const votedTag = style({
   fontFamily: vars.font.mono,
-  fontSize: "12px",
-  fontWeight: 700,
+  fontSize: "11px",
+  fontWeight: 800,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
   whiteSpace: "nowrap",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  color: vars.color.accentText,
 });
 
 export const button = style({
