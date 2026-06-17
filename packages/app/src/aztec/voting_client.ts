@@ -93,6 +93,7 @@ export class VotingClient {
     deployment: Deployment,
     onPhase?: (phase: SetupPhase) => void,
   ): Promise<VotingClient> {
+    // docs:start:connect
     // 1. Connect to the node and spin up the wallet.
     onPhase?.("connect");
     const node = createAztecNodeClient(deployment.nodeUrl);
@@ -120,6 +121,7 @@ export class VotingClient {
       deriveSigningKey(secret),
     );
     storeAccount(secret, salt);
+    // docs:end:connect
 
     // 3. Bind the deployed contract.
     onPhase?.("register");
