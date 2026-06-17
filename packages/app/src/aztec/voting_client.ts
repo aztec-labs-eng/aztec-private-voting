@@ -16,19 +16,20 @@ import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
-import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
+import {
+  SponsoredFeePaymentMethod,
+  type FeePaymentMethod,
+} from "@aztec/aztec.js/fee";
 import { getPublicEvents } from "@aztec/aztec.js/events";
 import { BatchCall } from "@aztec/aztec.js/contracts";
 import { deriveSigningKey } from "@aztec/stdlib/keys";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
-import { SponsoredFPCContractArtifact } from "@aztec/noir-contracts.js/SponsoredFPC";
 
-import {
-  PrivateVotingContract,
-  PrivateVotingContractArtifact,
-} from "@app/contracts/PrivateVoting";
+import type { PrivateVotingContract } from "@app/contracts/PrivateVoting";
 import { election, type Deployment } from "./deployment.ts";
+
+const loadVotingContract = () => import("@app/contracts/PrivateVoting");
 
 /** The steps `connect` narrates as they happen, for the setup modal. */
 export type SetupPhase = "connect" | "account" | "register" | "done" | "error";
@@ -72,7 +73,7 @@ export class VotingClient {
     private readonly wallet: EmbeddedWallet,
     private readonly voting: PrivateVotingContract,
     private readonly account: AztecAddress,
-    private readonly paymentMethod: SponsoredFeePaymentMethod,
+    private readonly paymentMethod: FeePaymentMethod,
     private readonly deployment: Deployment,
     private readonly node: AztecNode,
   ) {}
@@ -94,23 +95,21 @@ export class VotingClient {
     onPhase?: (phase: SetupPhase) => void,
   ): Promise<VotingClient> {
     // docs:start:connect
-    // 1. Connect to the node and spin up the wallet.
+    // 1. Connect to the node and spin up the wallet. Whether the wallet generates
+    //    real proofs follows the network itself: the node advertises `realProofs`
+    //    (true on testnet, false on a local dev node).
     onPhase?.("connect");
     const node = createAztecNodeClient(deployment.nodeUrl);
+    const { realProofs } = await node.getNodeInfo();
     const wallet = await EmbeddedWallet.create(node, {
-      pxe: { proverEnabled: !deployment.nodeUrl.includes("localhost") },
+      pxe: { proverEnabled: realProofs },
     });
 
-    // Register the canonical SponsoredFPC and use it to pay fees.
-    const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-      SponsoredFPCContractArtifact,
-      { salt: new Fr(SPONSORED_FPC_SALT) },
-    );
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-    const paymentMethod = new SponsoredFeePaymentMethod(sponsoredFPC.address);
+    // How this network pays for the user's txs (sponsored today).
+    const paymentMethod = await VotingClient.paymentMethod(wallet, deployment);
 
-    // 2. Reconstruct (or mint) the saved account. Initializerless = no deploy tx:
-    //    creating it registers it in our PXE and it's immediately usable.
+    // 2. Reconstruct or create the saved account. Initializerless = no deploy tx:
+    //    creating it registers it in our wallet and it's immediately usable.
     onPhase?.("account");
     const saved = loadStoredAccount();
     const secret = saved?.secret ?? Fr.random();
@@ -140,7 +139,7 @@ export class VotingClient {
 
   // docs:start:register_contract
   /**
-   * REGISTER: teach our PXE about the deployed contract. The voting contract is
+   * REGISTER: teach our wallet about the deployed contract. The voting contract is
    * published on chain (its constructor is a public `#[initializer]`), so instead of
    * rebuilding the instance from deploy params we just ask the node for it with
    * `getContract(address)` and hand that to the wallet
@@ -163,10 +162,31 @@ export class VotingClient {
           }, then reload.`,
       );
     }
+    const { PrivateVotingContract, PrivateVotingContractArtifact } =
+      await loadVotingContract();
     await wallet.registerContract(instance, PrivateVotingContractArtifact);
     return PrivateVotingContract.at(instance.address, wallet);
   }
   // docs:end:register_contract
+
+  /**
+   * How this network pays for the user's transactions. Sponsored by the canonical
+   * SponsoredFPC today; branch on the deployment here to support other schemes.
+   */
+  private static async paymentMethod(
+    wallet: EmbeddedWallet,
+    _deployment: Deployment,
+  ): Promise<FeePaymentMethod> {
+    // The SponsoredFPC artifact is heavy (~850 KB) — load it only when connecting.
+    const { SponsoredFPCContractArtifact } =
+      await import("@aztec/noir-contracts.js/SponsoredFPC");
+    const sponsoredFPC = await getContractInstanceFromInstantiationParams(
+      SponsoredFPCContractArtifact,
+      { salt: new Fr(SPONSORED_FPC_SALT) },
+    );
+    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
+    return new SponsoredFeePaymentMethod(sponsoredFPC.address);
+  }
 
   // docs:start:send_vote
   /**
@@ -214,6 +234,7 @@ export class VotingClient {
    * use them to build a live feed of votes as they land.
    */
   async getFeed(): Promise<VoteEvent[]> {
+    const { PrivateVotingContract } = await loadVotingContract();
     const { events } = await getPublicEvents<{
       candidate: bigint;
       tally: bigint;
@@ -243,6 +264,7 @@ export class VotingClient {
    * `null` if they haven't voted yet
    */
   async getMyVote(): Promise<bigint | null> {
+    const { PrivateVotingContract } = await loadVotingContract();
     const events = await this.wallet.getPrivateEvents<{
       election_id: bigint;
       candidate: bigint;
