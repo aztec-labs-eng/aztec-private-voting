@@ -63,7 +63,9 @@ async function main() {
   //    testnet) and otherwise returns the existing address.
   const { secretKey, generated } = loadOrCreateSecret("VOTING_ADMIN_SECRET");
   if (generated) {
-    console.log(`Generated a deployer secret. Re-export it to reuse this account:`);
+    console.log(
+      `Generated a deployer secret. Re-export it to reuse this account:`,
+    );
     console.log(`  export VOTING_ADMIN_SECRET=${secretKey.toString()}`);
   }
   const admin = await deployAdmin({
@@ -78,7 +80,10 @@ async function main() {
   const currentMinFees = await node.getCurrentMinFees();
   const sendOpts = {
     from: admin,
-    fee: { paymentMethod, gasSettings: { maxFeesPerGas: currentMinFees.mul(10) } },
+    fee: {
+      paymentMethod,
+      gasSettings: { maxFeesPerGas: currentMinFees.mul(10) },
+    },
     wait: { timeout: 120, waitForStatus: TxStatus.PROPOSED },
   } as const;
 
@@ -86,7 +91,10 @@ async function main() {
   // Deterministic address from (class id, deployer, salt, constructor args), so
   // re-running this script reuses the same contract instead of redeploying.
   const salt = getSalt();
-  const deployMethod = PrivateVotingContract.deploy(wallet, admin, { deployer: admin, salt });
+  const deployMethod = PrivateVotingContract.deploy(wallet, admin, {
+    deployer: admin,
+    salt,
+  });
   const instance = await deployMethod.getInstance();
 
   // Always register the instance with our PXE (cheap + idempotent)...
@@ -99,7 +107,9 @@ async function main() {
     console.log(`Deploying PrivateVoting at ${instance.address}...`);
     await deployMethod.send(sendOpts);
   } else {
-    console.log(`PrivateVoting already deployed at ${instance.address}, reusing.`);
+    console.log(
+      `PrivateVoting already deployed at ${instance.address}, reusing.`,
+    );
   }
   // docs:end:deploy_instance
 
@@ -115,7 +125,9 @@ async function main() {
   // the network already ships a funded one, so this only runs on testnet/nextnet.
   if (network !== "local") {
     const sponsoredFPC = await getSponsoredFPCContract();
-    console.log(`Bridging fee juice into SponsoredFPC ${sponsoredFPC.address}...`);
+    console.log(
+      `Bridging fee juice into SponsoredFPC ${sponsoredFPC.address}...`,
+    );
     const { amount, minted } = await bridgeAndClaim({
       node,
       wallet,
@@ -128,7 +140,9 @@ async function main() {
       mode: bridgeMode(network),
       claimFeeOpts: sendOpts.fee,
     });
-    console.log(`SponsoredFPC funded with ${amount} FJ (minted=${minted}); votes are sponsored.`);
+    console.log(
+      `SponsoredFPC funded with ${amount} FJ (minted=${minted}); votes are sponsored.`,
+    );
   }
 
   // Write the deployment the frontend reads (address + election + candidates).
@@ -139,13 +153,17 @@ async function main() {
     chainId: l1ChainId.toString(),
     rollupVersion: rollupVersion.toString(),
     contractAddress: instance.address.toString(),
-    // deployer + salt let the frontend rebuild the contract instance to register it.
-    deployer: admin.toString(),
-    salt: salt.toString(),
     electionId: ELECTION_ID.toString(),
     candidates: CANDIDATES.map((c) => ({ id: c.id.toString(), name: c.name })),
   };
-  const outDir = join(import.meta.dirname, "..", "packages", "app", "src", "deployments");
+  const outDir = join(
+    import.meta.dirname,
+    "..",
+    "packages",
+    "app",
+    "src",
+    "deployments",
+  );
   mkdirSync(outDir, { recursive: true });
   const outPath = join(outDir, `${network}.json`);
   writeFileSync(outPath, JSON.stringify(deployment, null, 2));

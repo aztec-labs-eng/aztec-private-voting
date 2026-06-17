@@ -38,6 +38,8 @@ export const select = style({
   fontFamily: vars.font.mono,
   fontSize: "13px",
   cursor: "pointer",
+  textAlign: "center",
+  textAlignLast: "center",
 });
 
 const cardBase = {
@@ -84,7 +86,22 @@ export const candidateCard = style({
 
 export const candidateHead = style({ display: "flex", flexDirection: "column", gap: "4px" });
 export const name = style({ fontWeight: 700, fontSize: "17px" });
+// Count + optional "voted" tag on one row, so the tag never changes the card's
+// height (no layout jump when a vote lands).
+export const countRow = style({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "8px",
+  minHeight: "18px",
+});
 export const count = style({ fontFamily: vars.font.mono, fontSize: "13px", color: vars.color.muted });
+export const votedTag = style({
+  fontFamily: vars.font.mono,
+  fontSize: "12px",
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+});
 
 export const button = style({
   appearance: "none",
@@ -98,19 +115,6 @@ export const button = style({
   color: vars.color.accentText,
   transition: "opacity 0.15s",
   selectors: { "&:disabled": { opacity: 0.35, cursor: "not-allowed" } },
-});
-
-export const votedBadge = style({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "100%",
-  padding: "10px 14px",
-  borderRadius: vars.radius.md,
-  border: `1px dashed ${vars.color.border}`,
-  fontFamily: vars.font.mono,
-  fontSize: "13px",
-  fontWeight: 700,
 });
 
 export const footer = style({ display: "flex", flexDirection: "column", gap: "6px" });

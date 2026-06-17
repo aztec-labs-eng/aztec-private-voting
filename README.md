@@ -21,7 +21,7 @@ packages/
     artifacts/            committed codegen output (PrivateVoting.ts)
   app/                  React + Vite 8 + vanilla-extract frontend
     src/App.tsx           candidate list, donut chart, live event feed
-    src/aztec/            the Aztec layer: wallet, voting (docs regions), setup, deployment
+    src/aztec/            the Aztec layer: aztec.ts (the whole SDK flow, docs regions) + deployment.ts
     src/components/       SetupModal, StepProgress, VoteChart
 scripts/
   deploy.ts             deploy to local / testnet (idempotent)
@@ -132,7 +132,7 @@ The site inlines named regions via `#include_code` (fail-closed). Current region
 | File                                      | regions                                            |
 | ----------------------------------------- | -------------------------------------------------- |
 | `packages/contracts/contract/src/main.nr` | `storage_struct`, `cast_vote`, `add_to_tally`      |
-| `packages/app/src/aztec/voting.ts`        | `register_contract`, `simulate_query`, `send_vote` |
+| `packages/app/src/aztec/aztec.ts`         | `register_contract`, `simulate_query`, `send_vote` |
 | `scripts/deploy.ts`                       | `deploy_instance`                                  |
 
 `snippetRoots` should point at `packages/contracts/contract/`, `packages/app/src/`, and

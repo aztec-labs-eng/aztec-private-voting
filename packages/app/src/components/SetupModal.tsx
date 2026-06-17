@@ -1,17 +1,33 @@
 import { StepProgress, type Step, type StepState } from "./StepProgress.tsx";
-import type { SetupPhase } from "../aztec/setup.ts";
+import type { SetupPhase } from "../aztec/voting_client.ts";
 import * as css from "./SetupModal.css.ts";
 
 // What the modal teaches: every step the app takes before you can vote.
 const SETUP_STEPS: { key: SetupPhase; label: string; description: string }[] = [
-  { key: "connect", label: "Connect to the network", description: "Open an in-browser wallet" },
-  { key: "account", label: "Create your account", description: "An initializerless account — no on-chain deploy needed" },
-  { key: "register", label: "Register the contract", description: "Teach your PXE about the deployed voting contract" },
+  {
+    key: "connect",
+    label: "Connect to the network",
+    description: "Open an in-browser wallet",
+  },
+  {
+    key: "account",
+    label: "Create your account",
+    description: "An initializerless account — no on-chain deploy needed",
+  },
+  {
+    key: "register",
+    label: "Register the contract",
+    description: "Teach your PXE about the deployed voting contract",
+  },
 ];
 
 const PHASE_ORDER: SetupPhase[] = ["connect", "account", "register", "done"];
 
-function stateFor(stepKey: SetupPhase, phase: SetupPhase, error: boolean): StepState {
+function stateFor(
+  stepKey: SetupPhase,
+  phase: SetupPhase,
+  error: boolean,
+): StepState {
   if (error && stepKey === phase) return "error";
   const here = PHASE_ORDER.indexOf(phase);
   const mine = PHASE_ORDER.indexOf(stepKey);
@@ -51,12 +67,17 @@ export function SetupModal({
           <div>
             <h2 className={css.title}>Choose a network</h2>
             <p className={css.subtitle}>
-              This app is deployed to more than one network. Pick which one to connect to.
+              This app is deployed to more than one network. Pick which one to
+              connect to.
             </p>
           </div>
           <div className={css.choices}>
             {networks.map((n) => (
-              <button key={n.key} className={css.choice} onClick={() => onSelect(n.key)}>
+              <button
+                key={n.key}
+                className={css.choice}
+                onClick={() => onSelect(n.key)}
+              >
                 <span className={css.choiceName}>{n.network}</span>
                 <span className={css.choiceUrl}>{n.nodeUrl}</span>
               </button>
@@ -69,16 +90,21 @@ export function SetupModal({
 
   // ── Connection steps for the selected network. ──
   const done = phase === "done";
-  const steps: Step[] = SETUP_STEPS.map((s) => ({ ...s, state: stateFor(s.key, phase, !!error) }));
+  const steps: Step[] = SETUP_STEPS.map((s) => ({
+    ...s,
+    state: stateFor(s.key, phase, !!error),
+  }));
 
   return (
     <div className={css.backdrop} role="dialog" aria-modal="true">
       <div className={css.dialog}>
         <div>
-          <h2 className={css.title}>{done ? "You're ready to vote" : "Setting things up"}</h2>
+          <h2 className={css.title}>
+            {done ? "You're ready to vote" : "Setting things up"}
+          </h2>
           <p className={css.subtitle}>
-            On Aztec, your app runs its own wallet + PXE in the browser. Here's everything it does
-            before the first vote.
+            On Aztec, your app runs its own wallet + PXE in the browser. Here's
+            everything it does before the first vote.
           </p>
         </div>
 

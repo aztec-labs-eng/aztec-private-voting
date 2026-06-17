@@ -61,15 +61,16 @@ pub contract PrivateVoting {
     // docs:start:storage_struct
     #[storage]
     struct Storage<Context> {
-        // admin can start and end elections
+        // Address of the admin can start and end elections
         admin: PublicMutable<AztecAddress, Context>,
-        // election => candidate => number of votes (public: the tally is the only public state)
+        // Public mapping of election => candidate => number of votes
         tally: Map<ElectionId, Map<Field, PublicMutable<Field, Context>, Context>, Context>,
-        // election => whether voting has ended
+        // Public mapping of election => whether voting has ended
         vote_ended: Map<ElectionId, PublicMutable<bool, Context>, Context>,
-        // election => block the election became active at
+        // Public mapping of election => block it became active at
         active_at_block: Map<ElectionId, PublicImmutable<u32, Context>, Context>,
-        // election => voter => single-use claim that lets a voter vote at most once per election
+        // Mapping of election => voter => single-use claim that lets a voter vote at most once per election
+        // SingleUseClaim is **private**, as it does not reveal which user generated the claim
         vote_claims: Map<ElectionId, Owned<SingleUseClaim<Context>, Context>, Context>,
     }
     // docs:end:storage_struct
@@ -85,7 +86,8 @@ pub contract PrivateVoting {
     fn cast_vote(election_id: ElectionId, candidate: Field) {
         // `.claim()` emits a nullifier derived from (election, voter). Voting again with the
         // same account produces the same nullifier, which the protocol rejects, so each
-        // account can vote at most once per election, without revealing *who* voted.
+        // account can vote at most once per election. The nullifier derivation ensures it's not
+        // possible to link it back to the account that generated it.
         self.storage.vote_claims.at(election_id).at(self.msg_sender()).claim();
         // Emit a private event so we remember who we voted for
         self

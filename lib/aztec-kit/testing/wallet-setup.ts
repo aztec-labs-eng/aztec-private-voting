@@ -19,9 +19,12 @@ import { parsePaymentMode } from "./cli.ts";
 import type { NetworkName, PaymentMode } from "./network-config.ts";
 
 export async function getSponsoredFPCContract() {
-  return getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
-    salt: new Fr(SPONSORED_FPC_SALT),
-  });
+  return getContractInstanceFromInstantiationParams(
+    SponsoredFPCContractArtifact,
+    {
+      salt: new Fr(SPONSORED_FPC_SALT),
+    },
+  );
 }
 
 /**
@@ -46,7 +49,6 @@ export interface SetupWalletResult {
   node: AztecNode;
   wallet: EmbeddedWallet;
   sponsoredFPC: Awaited<ReturnType<typeof getSponsoredFPCContract>>;
-  paymentMode: PaymentMode;
   paymentMethod: PaymentMethod;
 }
 
@@ -69,7 +71,6 @@ export async function setupWallet(
     node,
     wallet,
     sponsoredFPC,
-    paymentMode,
     paymentMethod: buildPaymentMethod(paymentMode, sponsoredFPC.address),
   };
 }

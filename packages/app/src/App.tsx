@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { sendVote, getVoteFeed, getMyVote, type VoteEvent } from "./aztec/voting.ts";
-import { loadDeployments } from "./aztec/deployment.ts";
 import {
-  startSetup,
-  resetSetup,
-  subscribe,
-  getPhase,
-  getError,
-  readTallies,
-  type SetupResult,
-} from "./aztec/setup.ts";
+  type VotingClient,
+  type SetupPhase,
+  type VoteEvent,
+} from "./aztec/voting_client.ts";
+import { loadDeployments } from "./aztec/deployment.ts";
+import { useConnections } from "./connection.ts";
 import { SetupModal } from "./components/SetupModal.tsx";
 import { VoteChart, type Slice } from "./components/VoteChart.tsx";
 import { Feed, type FeedRow } from "./components/Feed.tsx";
@@ -25,25 +21,26 @@ const deployments = loadDeployments();
 const COLORS = [vars.color.accent, "#5ec8f0", "#f06ec8", "#f5b53c"];
 
 export default function App() {
-  // Active deployment, keyed by contract address. With more than one deployment
-  // we start with *no* selection, so nothing connects until the user picks a
-  // network in the modal — picking a dead local network is then a choice, not a
-  // forced failure that hides a perfectly good testnet deployment.
-  const [key, setKey] = useState<string | null>(
-    deployments.length === 1 ? deployments[0].contractAddress : null,
+  // The network the user has chosen. With more than one deployment we start with
+  // *no* selection, so nothing connects until the user picks one in the modal —
+  // picking a dead local network is then a choice, not a forced failure that hides
+  // a perfectly good testnet deployment.
+  const [network, setNetwork] = useState<string | null>(
+    deployments.length === 1 ? deployments[0].network : null,
   );
   const deployment = useMemo(
-    () => deployments.find((d) => d.contractAddress === key) ?? null,
-    [key],
+    () => deployments.find((d) => d.network === network) ?? null,
+    [network],
   );
 
-  const phase = useSyncExternalStore(
-    subscribe,
-    () => (key ? getPhase(key) : "connect"),
-    () => (key ? getPhase(key) : "connect"),
-  );
-  const [enteredByKey, setEnteredByKey] = useState<Record<string, boolean>>({});
-  const [readyByKey, setReadyByKey] = useState<Record<string, SetupResult>>({});
+  const { conns, reset } = useConnections(deployment);
+  const conn = network ? conns[network] : undefined;
+
+  // Purely a UI affordance: which networks the user has clicked past the setup
+  // modal for ("Enter the booth"). Not part of the connection state — it just
+  // gives the user a beat to read the modal before the app takes over.
+  const [entered, setEntered] = useState<Record<string, boolean>>({});
+
   const [tallies, setTallies] = useState<Record<string, number>>({});
   const [feed, setFeed] = useState<VoteEvent[]>([]);
   // The candidate *this* account voted for, read back from the private `Vote`
@@ -51,23 +48,26 @@ export default function App() {
   const [myVote, setMyVote] = useState<bigint | null>(null);
   const [loadingTally, setLoadingTally] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
-  const ready = key ? (readyByKey[key] ?? null) : null;
-  const entered = key ? !!enteredByKey[key] : false;
+  // Everything the UI needs, derived from the active network's connection state.
+  const phase: SetupPhase = conn?.phase ?? "connect";
+  const ready = conn?.phase === "done" ? conn.client : null;
+  const dismissed = ready !== null && network !== null && !!entered[network];
+  const setupError = conn?.phase === "error" ? conn.message : null;
   const candidates = deployment?.candidates ?? [];
 
   // Read-only refresh of the public tally + TallyUpdated feed + our own private
-  // vote. `silent` skips the
-  // loading indicator so the background poll doesn't flicker the UI.
+  // vote. `silent` skips the loading indicator so the background poll doesn't
+  // flicker the UI.
   const load = useCallback(
-    async (r: SetupResult, dep: NonNullable<typeof deployment>, opts?: { silent?: boolean }) => {
+    async (client: VotingClient, opts?: { silent?: boolean }) => {
       if (!opts?.silent) setLoadingTally(true);
       try {
         const [t, f, mv] = await Promise.all([
-          readTallies(r.voting, r.session, dep),
-          getVoteFeed(r.session, dep),
-          getMyVote(r.session, dep),
+          client.readTallies(),
+          client.getFeed(),
+          client.getMyVote(),
         ]);
         setTallies(t);
         setFeed(f);
@@ -81,56 +81,51 @@ export default function App() {
     [],
   );
 
-  // Bootstrap the selected deployment (memoised in setup.ts → safe under StrictMode).
+  // Reset the board on a network switch, and load it once we're connected.
+  // (Connecting itself is handled by useConnections above.)
   useEffect(() => {
-    if (!deployment) return;
     setTallies({});
     setFeed([]);
     setMyVote(null);
-    setError(null);
-    startSetup(deployment)
-      .then((result) => {
-        setReadyByKey((m) => ({ ...m, [deployment.contractAddress]: result }));
-        return load(result, deployment);
-      })
-      .catch(() => {
-        /* error surfaced via the setup store / modal */
-      });
-  }, [deployment, load]);
+    setVoteError(null);
+    if (ready) void load(ready);
+  }, [ready, load]);
 
   // Poll the tally + feed so votes from other sessions show up. Paused while a
   // vote is in flight (`busy`) so refreshes don't pile up during proving/sending;
   // the vote does its own refresh on completion and polling resumes after.
   useEffect(() => {
-    if (!ready || !deployment || busy) return;
-    const t = setInterval(() => void load(ready, deployment, { silent: true }), 5000);
+    if (!ready || busy) return;
+    const t = setInterval(() => void load(ready, { silent: true }), 5000);
     return () => clearInterval(t);
-  }, [ready, deployment, busy, load]);
+  }, [ready, busy, load]);
 
   const vote = useCallback(
     async (candidateId: string) => {
-      if (!ready || !deployment) return;
+      if (!ready) return;
       setBusy(candidateId);
-      setError(null);
+      setVoteError(null);
       try {
-        await sendVote(ready.voting, ready.session, deployment, BigInt(candidateId));
-        await load(ready, deployment);
+        await ready.vote(BigInt(candidateId));
+        await load(ready);
       } catch (err) {
-        setError(`Couldn't cast that vote: ${err instanceof Error ? err.message : String(err)}`);
+        setVoteError(
+          `Couldn't cast that vote: ${err instanceof Error ? err.message : String(err)}`,
+        );
       } finally {
         setBusy(null);
       }
     },
-    [ready, deployment, load],
+    [ready, load],
   );
 
-  const selectNetwork = (k: string) => {
-    if (getPhase(k) === "error") resetSetup(k); // re-pick a failed network => retry
-    setKey(k);
+  const selectNetwork = (net: string) => {
+    if (conns[net]?.phase === "error") reset(net); // re-pick a failed network => retry
+    setNetwork(net);
   };
   const backToChooser = () => {
-    if (key) resetSetup(key);
-    setKey(null);
+    if (network) reset(network);
+    setNetwork(null);
   };
 
   if (deployments.length === 0) {
@@ -142,14 +137,14 @@ export default function App() {
         <div className={css.hint}>
           <strong>No (current) deployment found.</strong>
           <span className={css.status}>
-            Start a local network and run <code>npm run deploy</code>, then reload.
+            Start a local network and run <code>npm run deploy</code>, then
+            reload.
           </span>
         </div>
       </main>
     );
   }
 
-  const hasVoted = myVote !== null;
   const total = Object.values(tallies).reduce((a, b) => a + b, 0);
   const slices: Slice[] = candidates.map((c, i) => ({
     name: c.name,
@@ -162,7 +157,8 @@ export default function App() {
     return idx >= 0 ? COLORS[idx % COLORS.length] : vars.color.muted;
   };
   const nameOf = (candidateId: bigint) =>
-    candidates.find((c) => c.id === candidateId.toString())?.name ?? `#${candidateId}`;
+    candidates.find((c) => c.id === candidateId.toString())?.name ??
+    `#${candidateId}`;
   const feedRows: FeedRow[] = feed.map((e, i) => ({
     key: `${e.txHash}-${i}`,
     name: nameOf(e.candidate),
@@ -174,32 +170,35 @@ export default function App() {
 
   return (
     <>
-      {!entered && (
+      {!dismissed && (
         <SetupModal
           networks={deployments.map((d) => ({
-            key: d.contractAddress,
+            key: d.network,
             network: d.network,
             nodeUrl: d.nodeUrl,
           }))}
-          selectedKey={key}
+          selectedKey={network}
           phase={phase}
-          error={key ? getError(key) : null}
+          error={setupError}
           onSelect={selectNetwork}
           onBack={backToChooser}
-          onEnter={() => key && setEnteredByKey((m) => ({ ...m, [key]: true }))}
+          onEnter={() => network && setEntered((m) => ({ ...m, [network]: true }))}
         />
       )}
 
       {busy && <VoteModal candidateName={nameOf(BigInt(busy))} />}
 
-      {error && <ErrorModal message={error} onDismiss={() => setError(null)} />}
+      {voteError && (
+        <ErrorModal message={voteError} onDismiss={() => setVoteError(null)} />
+      )}
 
       <main className={css.page}>
         <header className={css.header}>
           <h1 className={css.h1}>Private Voting</h1>
           <p className={css.lede}>
-            Cast your vote in private &mdash; nobody learns who you picked. Only the public tally
-            below ever changes, and a nullifier stops anyone from voting twice.
+            Cast your vote in private &mdash; nobody learns who you picked. Only
+            the public tally below ever changes, and a nullifier stops anyone
+            from voting twice.
           </p>
           {deployment && (
             <div className={css.controls}>
@@ -208,11 +207,11 @@ export default function App() {
                   network
                   <select
                     className={css.select}
-                    value={key ?? ""}
+                    value={network ?? ""}
                     onChange={(e) => selectNetwork(e.target.value)}
                   >
                     {deployments.map((d) => (
-                      <option key={d.contractAddress} value={d.contractAddress}>
+                      <option key={d.network} value={d.network}>
                         {d.network}
                       </option>
                     ))}
@@ -229,7 +228,9 @@ export default function App() {
               <div className={css.chartCard}>
                 <VoteChart slices={slices} />
                 <span className={css.simulating} data-active={loadingTally}>
-                  {loadingTally ? "↻ reading tally (simulating get_tally)…" : "live tally"}
+                  {loadingTally
+                    ? "↻ reading tally (simulating get_tally)…"
+                    : "live tally"}
                 </span>
               </div>
 
@@ -238,20 +239,27 @@ export default function App() {
                   const value = tallies[c.id] ?? 0;
                   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
                   const color = COLORS[i % COLORS.length];
-                  const votedForThis = myVote !== null && myVote === BigInt(c.id);
+                  const votedForThis =
+                    myVote !== null && myVote === BigInt(c.id);
                   return (
-                    <div className={css.candidateCard} style={{ borderTopColor: color }} key={c.id}>
+                    <div
+                      className={css.candidateCard}
+                      style={{ borderTopColor: color }}
+                      key={c.id}
+                    >
                       <div className={css.candidateHead}>
                         <span className={css.name}>{c.name}</span>
-                        <span className={css.count}>
-                          {value} {value === 1 ? "vote" : "votes"} · {pct}%
-                        </span>
+                        <div className={css.countRow}>
+                          <span className={css.count}>
+                            {value} {value === 1 ? "vote" : "votes"} · {pct}%
+                          </span>
+                          {votedForThis && (
+                            <span className={css.votedTag} style={{ color }}>
+                              ✓ your private vote
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {votedForThis && (
-                        <span className={css.votedBadge} style={{ color }}>
-                          ✓ your private vote
-                        </span>
-                      )}
                       {/* Voting stays enabled even after you've voted: a second
                           attempt lets the app showcase the protocol rejecting the
                           duplicate nullifier. */}
@@ -272,13 +280,11 @@ export default function App() {
             <Feed rows={feedRows} />
 
             <footer className={css.footer}>
-              {hasVoted && (
-                <span className={css.status}>
-                  You privately voted for <strong>{nameOf(myVote!)}</strong> — read back from the
-                  private <code>Vote</code> event only your account can decrypt.
+              {ready && (
+                <span className={css.addr}>
+                  voting as {ready.address.toString()}
                 </span>
               )}
-              {ready && <span className={css.addr}>voting as {ready.session.address.toString()}</span>}
             </footer>
           </>
         )}

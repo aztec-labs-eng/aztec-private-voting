@@ -3,6 +3,8 @@
  * Returns null when nothing has been deployed yet, so the UI can show a hint
  * instead of crashing the build on a missing import.
  */
+import { Fr } from "@aztec/aztec.js/fields";
+
 export interface Candidate {
   id: string;
   name: string;
@@ -14,10 +16,17 @@ export interface Deployment {
   chainId: string;
   rollupVersion: string;
   contractAddress: string;
-  deployer: string;
-  salt: string;
   electionId: string;
   candidates: Candidate[];
+}
+
+/**
+ * The `ElectionId` argument the contract methods expect, derived from whichever
+ * deployment (network) we're connected to — each network's JSON carries its own
+ * `electionId`, so the right election follows from the chosen deployment.
+ */
+export function election(deployment: Deployment): { id: Fr } {
+  return { id: new Fr(BigInt(deployment.electionId)) };
 }
 
 // Deployments are written by `npm run deploy` to `src/deployments/<network>.json`.
