@@ -136,6 +136,7 @@ async function main() {
     accounts: { admin: { secret: loadOrCreateSecret("VOTING_ADMIN_SECRET") } },
     fees: feePolicy(network),
     // One graph of steps — contracts to put on-chain and the txs to send.
+    // docs:start:deploy_graph
     steps: {
       // The voting contract is published on-chain; its initializer takes the admin address.
       voting: {
@@ -174,6 +175,7 @@ async function main() {
         },
       },
     },
+    // docs:end:deploy_graph
     output: (ctx) => writeAppDeployment(network, nodeUrl, ctx),
   });
 }
