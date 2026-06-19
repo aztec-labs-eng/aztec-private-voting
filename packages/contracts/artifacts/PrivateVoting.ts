@@ -155,6 +155,9 @@ vote_claims: {
 
     /** sync_state(scope: struct) */
     sync_state: ((scope: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
+    /** vote_active(election_id: struct) */
+    vote_active: ((election_id: { id: FieldLike }) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 
   

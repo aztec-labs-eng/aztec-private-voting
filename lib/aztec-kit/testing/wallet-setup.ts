@@ -16,21 +16,18 @@ import { Fr } from "@aztec/foundation/curves/bn254";
 import { SponsoredFeePaymentMethod } from "@aztec/aztec.js/fee";
 
 import { parsePaymentMode } from "./cli.ts";
-import type { NetworkName, PaymentMode } from "./network-config.ts";
+import { type NetworkName, type PaymentMode } from "./network-config.ts";
 
 export async function getSponsoredFPCContract() {
-  return getContractInstanceFromInstantiationParams(
-    SponsoredFPCContractArtifact,
-    {
-      salt: new Fr(SPONSORED_FPC_SALT),
-    },
-  );
+  return getContractInstanceFromInstantiationParams(SponsoredFPCContractArtifact, {
+    salt: new Fr(SPONSORED_FPC_SALT),
+  });
 }
 
 /**
  * Builds the payment method for a given mode.
  *
- * - `sponsoredfpc`: `SponsoredFeePaymentMethod` pointing at the sandbox
+ * - `sponsoredfpc`: `SponsoredFeePaymentMethod` pointing at the local-network
  *   SponsoredFPC. Used when the account has no fee juice.
  * - `feejuice`:     `undefined` — the wallet will pay out of the account's
  *   own FJ balance by default. The account must be funded beforehand.
@@ -49,6 +46,7 @@ export interface SetupWalletResult {
   node: AztecNode;
   wallet: EmbeddedWallet;
   sponsoredFPC: Awaited<ReturnType<typeof getSponsoredFPCContract>>;
+  paymentMode: PaymentMode;
   paymentMethod: PaymentMethod;
 }
 
@@ -71,6 +69,7 @@ export async function setupWallet(
     node,
     wallet,
     sponsoredFPC,
+    paymentMode,
     paymentMethod: buildPaymentMethod(paymentMode, sponsoredFPC.address),
   };
 }

@@ -18,6 +18,7 @@ export interface Deployment {
   contractAddress: string;
   electionId: string;
   candidates: Candidate[];
+  fpcAddress?: string;
 }
 
 /**
@@ -43,7 +44,9 @@ function isCurrent(d: Deployment | undefined): d is Deployment {
     !!d &&
     typeof d.contractAddress === "string" &&
     Array.isArray(d.candidates) &&
-    d.candidates.every((c) => c && typeof c === "object" && "id" in c && "name" in c)
+    d.candidates.every(
+      (c) => c && typeof c === "object" && "id" in c && "name" in c,
+    )
   );
 }
 
@@ -52,11 +55,19 @@ export function loadDeployments(): Deployment[] {
   return Object.entries(files)
     .filter(([, d]) => {
       if (isCurrent(d)) return true;
-      console.warn("Ignoring an outdated deployment file. Re-run `npm run deploy`.");
+      console.warn(
+        "Ignoring an outdated deployment file. Re-run `npm run deploy`.",
+      );
       return false;
     })
     .map(([, d]) => d)
-    .sort((a, b) => (a.network === "local" ? -1 : b.network === "local" ? 1 : a.network.localeCompare(b.network)));
+    .sort((a, b) =>
+      a.network === "local"
+        ? -1
+        : b.network === "local"
+          ? 1
+          : a.network.localeCompare(b.network),
+    );
 }
 
 /** The default deployment (local if present, else the first available). */

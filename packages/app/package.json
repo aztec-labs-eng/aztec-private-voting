@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@app/contracts": "*",
     "@aztec/accounts": "v5.0.0-rc.1",
     "@aztec/aztec.js": "v5.0.0-rc.1",
     "@aztec/constants": "v5.0.0-rc.1",
@@ -17,16 +18,17 @@
     "@aztec/noir-contracts.js": "v5.0.0-rc.1",
     "@aztec/stdlib": "v5.0.0-rc.1",
     "@aztec/wallets": "v5.0.0-rc.1",
-    "@app/contracts": "*",
+    "mipd": "^0.0.7",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "viem": "^2.52.2"
   },
   "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@vanilla-extract/css": "^1.17.0",
     "@vanilla-extract/vite-plugin": "^5.0.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
     "typescript": "~5.7.3",
     "vite": "^8.0.10",
     "vite-plugin-node-polyfills": "^0.26.0"

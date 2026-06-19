@@ -5,7 +5,8 @@
   "type": "module",
   "description": "PrivateVoting Noir contract + generated TypeScript artifact.",
   "exports": {
-    "./PrivateVoting": "./artifacts/PrivateVoting.ts"
+    "./PrivateVoting": "./artifacts/PrivateVoting.ts",
+    "./PrivateFeeJuice": "./artifacts/PrivateFeeJuice.ts"
   },
   "scripts": {
     "clean": "rm -rf target artifacts codegenCache.json",

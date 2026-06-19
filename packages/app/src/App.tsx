@@ -6,11 +6,13 @@ import {
   type VoteEvent,
 } from "./aztec/voting_client.ts";
 import { loadDeployments } from "./aztec/deployment.ts";
+import { describeBridgeStatus } from "./aztec/bridge.ts";
 import { useConnections } from "./connection.ts";
 import { SetupModal } from "./components/SetupModal.tsx";
 import { VoteChart, type Slice } from "./components/VoteChart.tsx";
 import { Feed, type FeedRow } from "./components/Feed.tsx";
 import { VoteModal } from "./components/VoteModal.tsx";
+import { BridgeModal } from "./components/BridgeModal.tsx";
 import { ErrorModal } from "./components/ErrorModal.tsx";
 import { vars } from "./theme.css.ts";
 import * as css from "./App.css.ts";
@@ -48,6 +50,9 @@ export default function App() {
   const [myVote, setMyVote] = useState<bigint | null>(null);
   const [loadingTally, setLoadingTally] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // Funding (testnet first vote) is its own modal — a separate process from casting.
+  const [funding, setFunding] = useState<string | null>(null);
+  const [fundStatus, setFundStatus] = useState<string | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
 
   // Everything the UI needs, derived from the active network's connection state.
@@ -95,17 +100,25 @@ export default function App() {
   // vote is in flight (`busy`) so refreshes don't pile up during proving/sending;
   // the vote does its own refresh on completion and polling resumes after.
   useEffect(() => {
-    if (!ready || busy) return;
+    if (!ready || busy || funding) return;
     const t = setInterval(() => void load(ready, { silent: true }), 5000);
     return () => clearInterval(t);
-  }, [ready, busy, load]);
+  }, [ready, busy, funding, load]);
 
   const vote = useCallback(
     async (candidateId: string) => {
       if (!ready) return;
-      setBusy(candidateId);
       setVoteError(null);
       try {
+        // Testnet first vote: fund the account first (a separate, slower process — its own
+        // modal). Once funded, casting is the regular private flow below.
+        if (await ready.needsFunding()) {
+          setFunding(candidateId);
+          await ready.fund((status) => setFundStatus(describeBridgeStatus(status)));
+          setFunding(null);
+          setFundStatus(null);
+        }
+        setBusy(candidateId);
         await ready.vote(BigInt(candidateId));
         await load(ready);
       } catch (err) {
@@ -114,6 +127,8 @@ export default function App() {
         );
       } finally {
         setBusy(null);
+        setFunding(null);
+        setFundStatus(null);
       }
     },
     [ready, load],
@@ -186,6 +201,7 @@ export default function App() {
         />
       )}
 
+      {funding && <BridgeModal status={fundStatus} />}
       {busy && <VoteModal candidateName={nameOf(BigInt(busy))} />}
 
       {voteError && (

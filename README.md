@@ -74,12 +74,16 @@ redeploying.
 
 - **Local:** prefunded test accounts / the local-network `SponsoredFPC` pay the gas — no
   bridging, anvil/forge-familiar.
-- **Testnet:** `deploy:testnet` bridges fee juice from L1 twice — once to fund the
-  **deployer** account, and once to fund the **SponsoredFPC** (a fully private contract;
-  no publication, we just credit its address). The frontend then sponsors every visitor's
-  vote through that FPC, so users need no fee juice of their own. Privacy note: the
-  _operator's_ bridged funding links the operator's L1↔L2 txs, but visitors stay private —
-  their votes are nullifier-private and paid by the shared FPC.
+- **Testnet:** `deploy:testnet` bridges fee juice from L1 to fund the **deployer** account,
+  then points the frontend at the **`PrivateFeeJuice` FPC** — a fully private fee-payment
+  contract (no publication; the frontend derives its deterministic address and registers
+  the instance in its own PXE). Each visitor funds their own first vote: the app connects
+  an L1 wallet (EIP-6963 via `viem` + `mipd`) and bridges a little fee juice into the FPC via
+  `fee_entrypoint_with_topup`, then later votes spend that balance via `fee_entrypoint`.
+  The FPC pays the sequencer out of its pool while debiting the voter's private balance
+  note. Privacy note: a visitor's own L1 bridge links their L1↔L2 funding, but the vote
+  itself stays nullifier-private and is paid by the FPC. (All L1 bridging lives in
+  `packages/app/src/aztec/bridge.ts`, a contained shim slated for an upstreamed widget.)
 
 ## Test tiers
 

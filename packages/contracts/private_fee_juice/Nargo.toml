@@ -1,0 +1,9 @@
+[package]
+name = "private_fee_juice"
+authors = [""]
+compiler_version = ">=0.25.0"
+type = "contract"
+
+[dependencies]
+aztec = { git = "https://github.com/AztecProtocol/aztec-packages/", tag = "v5.0.0-rc.1", directory = "noir-projects/aztec-nr/aztec" }
+fee_juice = { git = "https://github.com/AztecProtocol/aztec-packages/", tag = "v5.0.0-rc.1", directory = "noir-projects/noir-contracts/contracts/protocol_interface/fee_juice_interface" }
