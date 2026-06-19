@@ -6,4 +6,4 @@ type = "lib"
 
 [dependencies]
 aztec = { git = "https://github.com/AztecProtocol/aztec-packages/", tag = "v5.0.0-rc.1", directory = "noir-projects/aztec-nr/aztec" }
-private_voting = { path = "../contract" }
+private_voting = { path = "../private_voting" }

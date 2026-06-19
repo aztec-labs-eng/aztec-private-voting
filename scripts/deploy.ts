@@ -1,176 +1,181 @@
 /**
- * Deploy PrivateVoting to a local network or to testnet.
+ * Deploy PrivateVoting with the minimal declarative deploy framework (lib/aztec-kit/deploy).
  *
- *   npm run deploy            # local  (prefunded / SponsoredFPC, no bridging)
- *   npm run deploy:testnet    # testnet (bridges fee juice to fund the deployer
- *                             #          AND the SponsoredFPC the frontend uses)
+ *   npm run deploy            # local   (SponsoredFPC pays, no bridging)
+ *   npm run deploy:testnet    # testnet  (deployer pays from its own Fee Juice, topping up
+ *                             #           from L1 when its balance is low)
  *
- * On Aztec, "deploying" is not one step like on Ethereum. It is:
- *   1. register the contract *class* (the code) on the network,
- *   2. deploy an *instance* of that class at a deterministic address,
- *   3. run the instance's public initializer (the `constructor`).
- * The `deploy_instance` region below shows all three happening together.
+ * This file is just the *spec* — one graph of steps (the contracts that must end up on-chain
+ * and the txs to send) plus how fees are paid. The engine (resolve → inventory → fund → execute
+ * → output) lives in lib/aztec-kit/deploy and runs it idempotently: re-running only does what's
+ * still missing. Accounts are initializerless (no account-deploy tx); the frontend pays via the
+ * fully-private PrivateFeeJuice FPC whose address this records. Testnet bridging hits L1 (Sepolia) — set `L1_FUNDER_KEY`
+ * to a funded Sepolia key, and `L1_RPC_URL` to override the default public RPC if it's slow.
  *
- * Run with Node 24's native TS support (no ts-node needed):
- *   node scripts/deploy.ts --network <local|testnet>
+ * Run with Node 24's native TS support: `node scripts/deploy.ts --network <local|testnet>`.
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { Fr } from "@aztec/foundation/curves/bn254";
-import { TxStatus } from "@aztec/stdlib/tx";
 
-import {
-  PrivateVotingContract,
-  PrivateVotingContractArtifact,
-} from "../packages/contracts/artifacts/PrivateVoting.ts";
-import {
-  parseNetwork,
-  NETWORK_URLS,
-  setupWallet,
-  loadOrCreateSecret,
-  deployAdmin,
-  getSalt,
-  getSponsoredFPCContract,
-  L1_DEFAULTS,
-  resolveL1Funder,
-  bridgeMode,
-} from "../lib/aztec-kit/testing/index.ts";
-import { bridgeAndClaim } from "../lib/aztec-kit/bridging/index.ts";
+import { PrivateVotingContract } from "../packages/contracts/artifacts/PrivateVoting.ts";
+import { PrivateFeeJuiceContract } from "../packages/contracts/artifacts/PrivateFeeJuice.ts";
+import { runDeployment } from "../lib/aztec-kit/deploy/index.ts";
+import type { Ctx, FeePolicy } from "../lib/aztec-kit/deploy/index.ts";
+import type { NetworkName } from "../lib/aztec-kit/testing/network-config.ts";
 
 // The demo runs a single election; the contract itself supports many.
 const ELECTION_ID = 1n;
+const ELECTION = { id: new Fr(ELECTION_ID) };
 // Candidates the frontend renders. (Two of them are, ahem, very hard to tell apart.)
 const CANDIDATES = [
   { id: 1n, name: "John Jackson" },
   { id: 2n, name: "Jack Johnson" },
   { id: 3n, name: "Richard Nixon's Head" },
 ];
-// How much fee juice to bridge into the SponsoredFPC on non-local networks. It
-// sponsors every visitor's vote, so size it for the demo (faucet may cap it).
-const SPONSOR_FUND_AMOUNT = BigInt("1000000000000000000000"); // 1000 FJ
+// Deterministic salt for the (fully private) PrivateFeeJuice FPC the frontend pays through.
+const FPC_SALT = new Fr(0x1234n);
+const NETWORK_URLS: Record<NetworkName, string> = {
+  local: "http://localhost:8080",
+  testnet: "https://canonical.testnet.rpc.aztec-labs.com",
+};
 
-async function main() {
-  const network = parseNetwork();
-  const nodeUrl = NETWORK_URLS[network];
-
-  // 1. Wallet + fee payment. On `local` this points fees at the local network
-  //    SponsoredFPC; on testnet the deployer pays from its own bridged FJ.
-  const { node, wallet, paymentMethod } = await setupWallet(nodeUrl, network);
-
-  // 2. The deployer account. `deployAdmin` is idempotent: it deploys a schnorr
-  //    account once (via SponsoredFPC on local, or by bridging fee juice on
-  //    testnet) and otherwise returns the existing address.
-  const { secretKey, generated } = loadOrCreateSecret("VOTING_ADMIN_SECRET");
-  if (generated) {
-    console.log(
-      `Generated a deployer secret. Re-export it to reuse this account:`,
-    );
-    console.log(`  export VOTING_ADMIN_SECRET=${secretKey.toString()}`);
+function parseNetwork(): NetworkName {
+  const idx = process.argv.indexOf("--network");
+  const value = idx >= 0 ? process.argv[idx + 1] : undefined;
+  if (!value || !(value in NETWORK_URLS)) {
+    throw new Error(`Pass --network <${Object.keys(NETWORK_URLS).join("|")}>`);
   }
-  const admin = await deployAdmin({
-    network,
-    node,
-    wallet,
-    secretKey,
-    sponsoredPaymentMethod: paymentMethod,
-    label: "Voting deployer",
-  });
+  return value as NetworkName;
+}
 
-  const currentMinFees = await node.getCurrentMinFees();
-  const sendOpts = {
-    from: admin,
-    fee: {
-      paymentMethod,
-      gasSettings: { maxFeesPerGas: currentMinFees.mul(10) },
-    },
-    wait: { timeout: 120, waitForStatus: TxStatus.PROPOSED },
-  } as const;
+// The framework never reads the environment — this script (the caller) resolves secrets and
+// config here and pipes them into the spec.
 
-  // docs:start:deploy_instance
-  // Deterministic address from (class id, deployer, salt, constructor args), so
-  // re-running this script reuses the same contract instead of redeploying.
-  const salt = getSalt();
-  const deployMethod = PrivateVotingContract.deploy(wallet, admin, {
-    deployer: admin,
-    salt,
-  });
-  const instance = await deployMethod.getInstance();
+/** The deployer secret from `VOTING_ADMIN_SECRET`, generating + logging a fresh one if unset. */
+function loadOrCreateSecret(envVar: string): Fr {
+  const env = process.env[envVar];
+  if (env) return Fr.fromString(env);
+  const secret = Fr.random();
+  console.log(
+    "Generated a deployer secret. Re-export it to reuse this account:",
+  );
+  console.log(`  export ${envVar}=${secret.toString()}`);
+  return secret;
+}
 
-  // Always register the instance with our PXE (cheap + idempotent)...
-  await wallet.registerContract(instance, PrivateVotingContractArtifact);
+/** Universal salt from `SALT` (defaults to 0) for reproducible addresses across re-runs. */
+function getSalt(): Fr {
+  const env = process.env.SALT;
+  return env ? Fr.fromString(env) : new Fr(0);
+}
 
-  // ...but only send the deploy tx if this address isn't on-chain yet. The deploy
-  // tx publishes the class, deploys the instance, and runs the `constructor`.
-  const alreadyDeployed = await node.getContract(instance.address);
-  if (!alreadyDeployed) {
-    console.log(`Deploying PrivateVoting at ${instance.address}...`);
-    await deployMethod.send(sendOpts);
-  } else {
-    console.log(
-      `PrivateVoting already deployed at ${instance.address}, reusing.`,
-    );
-  }
-  // docs:end:deploy_instance
+const ONE_FEE_JUICE = 10n ** 18n;
 
-  const voting = PrivateVotingContract.at(instance.address, wallet);
+/**
+ * Fee policy: SponsoredFPC on local, the deployer's own Fee Juice on testnet (bridging from L1
+ * if low). The L1 funder key / RPC are piped in from the env here — the framework never reads it.
+ */
+function feePolicy(network: NetworkName): FeePolicy {
+  if (network === "local") return { kind: "sponsored" };
+  return {
+    kind: "fee-juice",
+    threshold: 100n * ONE_FEE_JUICE,
+    fundAmount: 1000n * ONE_FEE_JUICE,
+    l1FunderKey: process.env.L1_FUNDER_KEY as `0x${string}` | undefined,
+    l1RpcUrl: process.env.L1_RPC_URL,
+  };
+}
 
-  // Open the demo election so the frontend can cast votes immediately.
-  await voting.methods.start_vote({ id: new Fr(ELECTION_ID) }).send(sendOpts);
-  console.log(`Election ${ELECTION_ID} is open.`);
-
-  // Fund the SponsoredFPC that the frontend uses to sponsor every visitor's vote.
-  // It is a fully private contract — no publication needed; we just credit its
-  // address with fee juice (the frontend registers it in its own PXE). On local
-  // the network already ships a funded one, so this only runs on testnet/nextnet.
-  if (network !== "local") {
-    const sponsoredFPC = await getSponsoredFPCContract();
-    console.log(
-      `Bridging fee juice into SponsoredFPC ${sponsoredFPC.address}...`,
-    );
-    const { amount, minted } = await bridgeAndClaim({
-      node,
-      wallet,
-      recipient: sponsoredFPC.address,
-      claimFrom: admin,
-      l1RpcUrl: L1_DEFAULTS[network].l1RpcUrl,
-      l1ChainId: L1_DEFAULTS[network].l1ChainId,
-      amount: SPONSOR_FUND_AMOUNT,
-      l1PrivateKey: resolveL1Funder(network),
-      mode: bridgeMode(network),
-      claimFeeOpts: sendOpts.fee,
-    });
-    console.log(
-      `SponsoredFPC funded with ${amount} FJ (minted=${minted}); votes are sponsored.`,
-    );
-  }
-
-  // Write the deployment the frontend reads (address + election + candidates).
-  const { l1ChainId, rollupVersion } = await node.getNodeInfo();
+/** Write the deployment JSON the frontend reads (address + election + candidates [+ FPC]). */
+async function writeAppDeployment(
+  network: NetworkName,
+  nodeUrl: string,
+  ctx: Ctx,
+): Promise<void> {
+  const { l1ChainId, rollupVersion } = await ctx.node.getNodeInfo();
   const deployment = {
     network,
     nodeUrl,
     chainId: l1ChainId.toString(),
     rollupVersion: rollupVersion.toString(),
-    contractAddress: instance.address.toString(),
+    contractAddress: ctx.contract("voting").toString(),
     electionId: ELECTION_ID.toString(),
     candidates: CANDIDATES.map((c) => ({ id: c.id.toString(), name: c.name })),
+    // On local the frontend uses the SponsoredFPC, so no FPC fields are written.
+    ...(network === "local"
+      ? {}
+      : {
+          fpcAddress: ctx.contract("fpc").toString(),
+          fpcSalt: FPC_SALT.toString(),
+        }),
   };
-  const outDir = join(
+  const outPath = join(
     import.meta.dirname,
     "..",
     "packages",
     "app",
     "src",
     "deployments",
+    `${network}.json`,
   );
-  mkdirSync(outDir, { recursive: true });
-  const outPath = join(outDir, `${network}.json`);
+  mkdirSync(join(outPath, ".."), { recursive: true });
   writeFileSync(outPath, JSON.stringify(deployment, null, 2));
+  console.log(`  wrote           ${outPath}`);
+}
 
-  console.log(`\nDeployed PrivateVoting to ${network}.`);
-  console.log(`  contract: ${instance.address}`);
-  console.log(`  wrote:    ${outPath}`);
+async function main() {
+  const network = parseNetwork();
+  const nodeUrl = NETWORK_URLS[network];
+
+  await runDeployment({
+    network,
+    nodeUrl,
+    salt: getSalt(),
+    accounts: { admin: { secret: loadOrCreateSecret("VOTING_ADMIN_SECRET") } },
+    fees: feePolicy(network),
+    // One graph of steps — contracts to put on-chain and the txs to send.
+    steps: {
+      // The voting contract is published on-chain; its initializer takes the admin address.
+      voting: {
+        kind: "contract",
+        contract: PrivateVotingContract,
+        deployer: (resolve) => resolve.account("admin"),
+        initializerArgs: (resolve) => [resolve.account("admin")],
+        mode: "publish",
+      },
+      // Off local, the frontend pays via this fully-private FPC. We only need its
+      // deterministic address (no tx); the frontend rebuilds + registers it itself.
+      ...(network === "local"
+        ? {}
+        : {
+            fpc: {
+              kind: "contract" as const,
+              contract: PrivateFeeJuiceContract,
+              deployer: (resolve) => resolve.account("admin"),
+              salt: FPC_SALT,
+              mode: "register" as const,
+            },
+          }),
+      // Open the demo election so the frontend can cast votes immediately. `vote_active`
+      // is the idempotency gate — `start_vote` reverts if called twice.
+      startVote: {
+        kind: "action",
+        from: (resolve) => resolve.account("admin"),
+        dependsOn: ["voting"],
+        call: (ctx) => ctx.instance("voting").methods.start_vote(ELECTION),
+        done: async (ctx) => {
+          const { result } = await ctx
+            .instance("voting")
+            .methods.vote_active(ELECTION)
+            .simulate({ from: ctx.account("admin") });
+          return Boolean(result);
+        },
+      },
+    },
+    output: (ctx) => writeAppDeployment(network, nodeUrl, ctx),
+  });
 }
 
 main()

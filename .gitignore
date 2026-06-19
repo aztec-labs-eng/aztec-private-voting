@@ -12,6 +12,9 @@ packages/app/.vite/
 # generated per-environment deployment manifests (written by `npm run deploy`)
 packages/app/src/deployments/
 
+# deploy framework resume state (pending bridge claims + resolved addresses)
+.deploy-state/
+
 # tests
 test-results/
 playwright-report/

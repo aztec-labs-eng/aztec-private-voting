@@ -129,4 +129,15 @@ pub contract PrivateVoting {
     fn get_tally(election_id: ElectionId, candidate: Field) -> Field {
         self.storage.tally.at(election_id).at(candidate).read()
     }
+
+    /// Whether `election_id` is currently open: `start_vote` has been called and `end_vote`
+    /// has not. Lets a deploy script (or UI) tell, before sending a tx, whether the election
+    /// still needs starting — `start_vote` reverts if called twice (it initializes a
+    /// `PublicImmutable`), so this guards against that.
+    #[external("public")]
+    #[view]
+    fn vote_active(election_id: ElectionId) -> bool {
+        self.storage.active_at_block.at(election_id).is_initialized()
+            & !self.storage.vote_ended.at(election_id).read()
+    }
 }

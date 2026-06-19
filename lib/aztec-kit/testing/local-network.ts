@@ -82,6 +82,18 @@ import { ensureAztecBinsInPath, killTracked, resolveAnvilBinary, spawnTracked } 
 
 const DEFAULT_MNEMONIC = "test test test test test test test test test test test junk";
 
+/**
+ * Min-fee padding multiplier for test wallets running against
+ * {@link setupLocalNetwork}. The AutomineSequencer builds one block per tx and
+ * advances L1 time in big jumps, so the network's congestion base fee can swing
+ * sharply between the wallet's fee estimate and the block the tx actually lands
+ * in. The default wallet padding (0.5 ⇒ maxFee = 1.5× estimate) isn't enough and
+ * trips `maxFeesPerGas.feePerL2Gas must be >= gasFees.feePerL2Gas`. Apply this
+ * via `wallet.setMinFeePadding(TEST_FEE_PADDING)` on every test wallet that
+ * sends txs.
+ */
+export const TEST_FEE_PADDING = 30;
+
 // ─────────────────────────────────────────────────────────────────────
 // In-process launch mode
 // ─────────────────────────────────────────────────────────────────────
@@ -129,9 +141,24 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
   const privateKey: Hex = `0x${Buffer.from(hdAccount.getHdKey().privateKey!).toString("hex")}`;
 
   // ── 3. Base node config ────────────────────────────────────────────
-  //    Test-only flags, fixed coinbase, minTxsPerBlock=1 so account-deploy txs
-  //    land reliably. `useAutomineSequencer` drives block production inline (the
-  //    old external AnvilTestWatcher was removed upstream around 20260612).
+  //    Aligned with the e2e reference's `AUTOMINE_E2E_OPTS` (see
+  //    `end-to-end/src/fixtures/fixtures.ts`). v6 switched the production
+  //    Sequencer to proposer pipelining: the proposer builds for slot N+1
+  //    during slot N, so a tx submitted at the start of slot N arrives
+  //    *after* that block was built. With the production sequencer +
+  //    `minTxsPerBlock=1` + interval mining, that stalls the chain on
+  //    alternating slots — account/token-deploy `beforeAll`s never land a
+  //    block and hit the 300s hook timeout.
+  //
+  //    For a deterministic, single-node, in-process suite we instead use
+  //    the `AutomineSequencer` (`useAutomineSequencer`): it builds one
+  //    block per submitted tx, publishes synchronously in-slot, forces
+  //    anvil into automine mode itself, and owns all time control via a
+  //    serial queue — so it needs neither interval mining nor the
+  //    AnvilTestWatcher (which is why we skip starting one below).
+  //    `minTxsPerBlock=0` lets it build the single-tx blocks it needs.
+  //    `inboxLag` defaults to 1 (synchronous inbox) via the L1-contracts
+  //    config env vars, which is what the automine path requires.
   const config: AztecNodeConfig = {
     ...getAztecNodeConfigEnvVars(),
     l1RpcUrls: [rpcUrl],
@@ -140,12 +167,12 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     validatorPrivateKeys: new SecretValue<Hex[]>([privateKey]),
     coinbase: EthAddress.fromString(privateKeyToAddress(privateKey)),
     realProofs: false,
-    useAutomineSequencer: true,
     enableDelayer: true,
     listenAddress: "127.0.0.1",
     minTxPoolAgeMs: 0,
-    minTxsPerBlock: 1,
+    minTxsPerBlock: 0,
     aztecTargetCommitteeSize: 0,
+    useAutomineSequencer: true,
   };
 
   // ── 4. Genesis ─────────────────────────────────────────────────────
@@ -176,8 +203,10 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
   config.rollupVersion = deployL1.rollupVersion;
 
   // ── 6. Node ────────────────────────────────────────────────────────
-  //    The automine sequencer (config above) builds blocks inline; no external
-  //    watcher is needed since ~20260612.
+  //    No AnvilTestWatcher: the AutomineSequencer (config.useAutomineSequencer)
+  //    owns all L1 time control and forces anvil into automine mode on start,
+  //    so a watcher warping time alongside it would race. `dateProvider` is
+  //    still threaded through — the node hands it to the AutomineSequencer.
   const telemetry = await initTelemetryClient(getTelemetryConfig());
   const node = await AztecNodeService.createAndSync(
     config,
