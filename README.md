@@ -142,6 +142,14 @@ The site inlines named regions via `#include_code` (fail-closed). Current region
 `snippetRoots` should point at `packages/contracts/contract/`, `packages/app/src/`, and
 `scripts/`. Commands in content use `npm run …`.
 
+## Working with an AI coding agent
+
+The repo ships agent context that loads automatically in most tools: `AGENTS.md` /
+`CLAUDE.md` (layout + commands) and a Claude Code skill, `/aztec-tutor`, that fetches
+the quest's [agent pack](https://aztec-quickstart.anothercoffeefor.me/llms.txt) and tutors you
+through the quickstart — verifying each step, linking docs, opening the relevant
+code in your editor, and quizzing you as you go.
+
 ## TODO / follow-ups
 
 - **Drop the vendored `lib/aztec-kit/`** (bridging + in-process-network test helpers) once
