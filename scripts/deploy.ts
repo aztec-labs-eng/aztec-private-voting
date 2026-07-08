@@ -146,8 +146,7 @@ async function main() {
         initializerArgs: (resolve) => [resolve.account("admin")],
         mode: "publish",
       },
-      // Off local, the frontend pays via this fully-private FPC. We only need its
-      // deterministic address (no tx); the frontend rebuilds + registers it itself.
+      // The private fpc used on testnet. No public deployment, just wallet registration.
       ...(network === "local"
         ? {}
         : {

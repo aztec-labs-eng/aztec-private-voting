@@ -40,7 +40,10 @@ import {
 import { bridgeFeeJuiceToFpc, type BridgeStatus } from "./bridge.ts";
 
 const loadVotingContract = () => import("@app/contracts/PrivateVoting");
-const loadFeeJuiceContract = () => import("@app/contracts/PrivateFeeJuice");
+const loadPrivateFeeJuiceContract = () =>
+  import("@app/contracts/PrivateFeeJuice");
+const loadSponsoredFPCContract = () =>
+  import("@aztec/noir-contracts.js/SponsoredFPC");
 
 /** The steps `connect` narrates as they happen, for the setup modal. */
 export type SetupPhase = "connect" | "account" | "register" | "done" | "error";
@@ -130,10 +133,6 @@ export class VotingClient {
       pxe: { proverEnabled: realProofs },
     });
 
-    // How this network pays for the user's txs: SponsoredFPC on local, the
-    // PrivateFeeJuice FPC on testnet.
-    const feePayment = await VotingClient.setupFeePayment(wallet, deployment);
-
     // 2. Reconstruct or create the saved account. Initializerless = no deploy tx:
     //    creating it registers it in our wallet and it's immediately usable.
     onPhase?.("account");
@@ -148,9 +147,14 @@ export class VotingClient {
     storeAccount(secret, salt);
     // docs:end:connect
 
-    // 3. Bind the deployed contract.
+    // 3. Register the contracts this network needs — the voting contract and the
+    //    fee-paying FPC. `register` explains why each is fetched vs. reconstructed.
     onPhase?.("register");
-    const voting = await VotingClient.register(wallet, node, deployment);
+    const { voting, feePayment } = await VotingClient.register(
+      wallet,
+      node,
+      deployment,
+    );
 
     onPhase?.("done");
     return new VotingClient(
@@ -165,74 +169,87 @@ export class VotingClient {
 
   // docs:start:register_contract
   /**
-   * REGISTER: teach our wallet about the deployed contract. The voting contract is
-   * published on chain (its constructor is a public `#[initializer]`), so instead of
-   * rebuilding the instance from deploy params we just ask the node for it with
-   * `getContract(address)` and hand that to the wallet
+   * REGISTER: teach our wallet about the contracts this app needs on this network, so
+   * it can build transactions against them. There are two ways a contract becomes known
+   * to the wallet, and this app needs both — that's the published-vs-fully-private split:
    *
+   *   - The voting contract is PUBLISHED on chain (its constructor is a public
+   *     `#[initializer]`), so its instance already lives on the network. We don't
+   *     reconstruct it — we ask the node for it with `getContract(address)` and register
+   *     whatever comes back.
+   *
+   *   - Both FPCs are FULLY PRIVATE: nothing about them is published, so there is
+   *     nothing on chain to fetch. We rebuild instances deterministically from the
+   *     same deploy params it was deployed with (artifact + salt) and register that.
+   *     Which FPC is the network's choice — PrivateFeeJuice on testnet, SponsoredFPC
+   *     locally.
+   *
+   * Returns the bound voting contract plus how this network pays fees (see `FeePayment`);
+   * the payment method itself is built per-vote in `votePaymentMethod`.
    */
   private static async register(
     wallet: EmbeddedWallet,
     node: AztecNode,
     deployment: Deployment,
-  ): Promise<PrivateVotingContract> {
-    const address = AztecAddress.fromStringUnsafe(deployment.contractAddress);
-    const instance = await node.getContract(address);
-    if (!instance) {
-      throw new Error(
-        `The voting contract at ${deployment.contractAddress} is not published on "${deployment.network}". ` +
-          `Deploy it first with \`npm run deploy\`${
-            deployment.network === "testnet"
-              ? " (or `npm run deploy:testnet`)"
-              : ""
-          }, then reload.`,
-      );
-    }
+  ): Promise<{ voting: PrivateVotingContract; feePayment: FeePayment }> {
+    // Published → fetch the live instance from the node.
     const { PrivateVotingContract, PrivateVotingContractArtifact } =
       await loadVotingContract();
-    await wallet.registerContract(instance, PrivateVotingContractArtifact);
-    return PrivateVotingContract.at(instance.address, wallet);
-  }
-  // docs:end:register_contract
+    const votingInstance = await node.getContract(
+      AztecAddress.fromStringUnsafe(deployment.contractAddress),
+    );
+    if (!votingInstance) {
+      throw new Error(
+        `The voting contract at ${deployment.contractAddress} is not published on ` +
+          `"${deployment.network}". Deploy it first with \`npm run deploy\`` +
+          (deployment.network === "testnet"
+            ? " (or `npm run deploy:testnet`)"
+            : "") +
+          ", then reload.",
+      );
+    }
+    await wallet.registerContract(
+      votingInstance,
+      PrivateVotingContractArtifact,
+    );
+    const voting = PrivateVotingContract.at(votingInstance.address, wallet);
 
-  /**
-   * Resolve which FPC pays for this network's transactions and register it with our
-   * wallet — but don't build a payment method yet (that's per-vote, in `votePaymentMethod`):
-   *   - testnet → the PrivateFeeJuice FPC. Its instance is fully private, so we rebuild it
-   *               deterministically and register it; a first-time voter must bridge + top
-   *               up before they can pay.
-   *   - local   → the canonical SponsoredFPC, which pays for everyone.
-   */
-  private static async setupFeePayment(
-    wallet: EmbeddedWallet,
-    deployment: Deployment,
-  ): Promise<FeePayment> {
+    // Fully private → reconstruct the fee-paying FPC from its deploy params (artifact +
+    // salt) and register that. `deployment.fpcSalt` present means testnet's PrivateFeeJuice
+    // FPC; otherwise the canonical SponsoredFPC used locally.
+    let feePayment: FeePayment;
     if (deployment.fpcAddress && deployment.fpcSalt) {
-      // Rebuild the deterministic FPC instance and register it in our PXE — the FPC is
-      // fully private, so there is nothing published on-chain to fetch.
       const { PrivateFeeJuiceContract, PrivateFeeJuiceContractArtifact } =
-        await loadFeeJuiceContract();
-      const instance = await getContractInstanceFromInstantiationParams(
+        await loadPrivateFeeJuiceContract();
+      const fpcInstance = await getContractInstanceFromInstantiationParams(
         PrivateFeeJuiceContractArtifact,
         { salt: Fr.fromString(deployment.fpcSalt) },
       );
-      await wallet.registerContract(instance, PrivateFeeJuiceContractArtifact);
-      return {
+      await wallet.registerContract(
+        fpcInstance,
+        PrivateFeeJuiceContractArtifact,
+      );
+      feePayment = {
         type: "fpc",
-        instance: PrivateFeeJuiceContract.at(instance.address, wallet),
+        instance: PrivateFeeJuiceContract.at(fpcInstance.address, wallet),
       };
+    } else {
+      const { SponsoredFPCContractArtifact } = await loadSponsoredFPCContract();
+      const sponsoredInstance =
+        await getContractInstanceFromInstantiationParams(
+          SponsoredFPCContractArtifact,
+          { salt: new Fr(SPONSORED_FPC_SALT) },
+        );
+      await wallet.registerContract(
+        sponsoredInstance,
+        SponsoredFPCContractArtifact,
+      );
+      feePayment = { type: "sponsored", instance: sponsoredInstance };
     }
 
-    // The SponsoredFPC artifact is heavy (~850 KB) — load it only when connecting.
-    const { SponsoredFPCContractArtifact } =
-      await import("@aztec/noir-contracts.js/SponsoredFPC");
-    const sponsoredFPC = await getContractInstanceFromInstantiationParams(
-      SponsoredFPCContractArtifact,
-      { salt: new Fr(SPONSORED_FPC_SALT) },
-    );
-    await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-    return { type: "sponsored", instance: sponsoredFPC };
+    return { voting, feePayment };
   }
+  // docs:end:register_contract
 
   /**
    * Whether the next vote needs a one-time top-up first: only on testnet, when the voter
