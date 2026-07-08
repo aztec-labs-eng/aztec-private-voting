@@ -23,7 +23,10 @@ import {
 import { getPublicEvents } from "@aztec/aztec.js/events";
 import { BatchCall } from "@aztec/aztec.js/contracts";
 import { deriveSigningKey } from "@aztec/stdlib/keys";
-import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
+import {
+  getContractInstanceFromInstantiationParams,
+  type ContractInstanceWithAddress,
+} from "@aztec/stdlib/contract";
 import { SPONSORED_FPC_SALT } from "@aztec/constants";
 
 import type { PrivateVotingContract } from "@app/contracts/PrivateVoting";
@@ -76,16 +79,23 @@ function storeAccount(secret: Fr, salt: Fr): void {
   }
 }
 
+/**
+ * How this network pays fees — exactly one kind, fixed at connect:
+ *   - `sponsored` → the canonical SponsoredFPC (local): pays for everyone, no balance needed.
+ *   - `fpc`       → the PrivateFeeJuice FPC (testnet): the voter bridges + tops up first.
+ * We keep only the registered instance; the concrete `FeePaymentMethod` is built per-vote
+ * in `votePaymentMethod`, since on testnet it depends on whether a top-up is pending.
+ */
+type FeePayment =
+  | { type: "sponsored"; instance: ContractInstanceWithAddress }
+  | { type: "fpc"; instance: PrivateFeeJuiceContract };
+
 export class VotingClient {
   private constructor(
     private readonly wallet: EmbeddedWallet,
     private readonly voting: PrivateVotingContract,
     private readonly account: AztecAddress,
-    // Exactly one of these is set, per network: `sponsored` on local (SponsoredFPC),
-    // `fpc` on testnet (PrivateFeeJuice — the payment method is chosen per-vote in
-    // `vote()`, since a first-time voter must bridge + top up first).
-    private readonly sponsored: FeePaymentMethod | null,
-    private readonly fpc: PrivateFeeJuiceContract | null,
+    private readonly feePayment: FeePayment,
     private readonly deployment: Deployment,
     private readonly node: AztecNode,
   ) {}
@@ -122,10 +132,7 @@ export class VotingClient {
 
     // How this network pays for the user's txs: SponsoredFPC on local, the
     // PrivateFeeJuice FPC on testnet.
-    const { sponsored, fpc } = await VotingClient.setupFeePayment(
-      wallet,
-      deployment,
-    );
+    const feePayment = await VotingClient.setupFeePayment(wallet, deployment);
 
     // 2. Reconstruct or create the saved account. Initializerless = no deploy tx:
     //    creating it registers it in our wallet and it's immediately usable.
@@ -150,8 +157,7 @@ export class VotingClient {
       wallet,
       voting,
       account.address,
-      sponsored,
-      fpc,
+      feePayment,
       deployment,
       node,
     );
@@ -190,20 +196,17 @@ export class VotingClient {
   // docs:end:register_contract
 
   /**
-   * How this network pays for the user's transactions:
-   *   - `local`            → the canonical SponsoredFPC (returns a ready payment method).
-   *   - testnet            → the PrivateFeeJuice FPC: we register its (fully private)
-   *                          instance here and return the contract; the actual payment
-   *                          method is chosen per-vote in `vote()`, since a first-time
-   *                          voter has to bridge + top up before they can pay.
+   * Resolve which FPC pays for this network's transactions and register it with our
+   * wallet — but don't build a payment method yet (that's per-vote, in `votePaymentMethod`):
+   *   - testnet → the PrivateFeeJuice FPC. Its instance is fully private, so we rebuild it
+   *               deterministically and register it; a first-time voter must bridge + top
+   *               up before they can pay.
+   *   - local   → the canonical SponsoredFPC, which pays for everyone.
    */
   private static async setupFeePayment(
     wallet: EmbeddedWallet,
     deployment: Deployment,
-  ): Promise<{
-    sponsored: FeePaymentMethod | null;
-    fpc: PrivateFeeJuiceContract | null;
-  }> {
+  ): Promise<FeePayment> {
     if (deployment.fpcAddress && deployment.fpcSalt) {
       // Rebuild the deterministic FPC instance and register it in our PXE — the FPC is
       // fully private, so there is nothing published on-chain to fetch.
@@ -215,8 +218,8 @@ export class VotingClient {
       );
       await wallet.registerContract(instance, PrivateFeeJuiceContractArtifact);
       return {
-        sponsored: null,
-        fpc: PrivateFeeJuiceContract.at(instance.address, wallet),
+        type: "fpc",
+        instance: PrivateFeeJuiceContract.at(instance.address, wallet),
       };
     }
 
@@ -228,7 +231,7 @@ export class VotingClient {
       { salt: new Fr(SPONSORED_FPC_SALT) },
     );
     await wallet.registerContract(sponsoredFPC, SponsoredFPCContractArtifact);
-    return { sponsored: new SponsoredFeePaymentMethod(sponsoredFPC.address), fpc: null };
+    return { type: "sponsored", instance: sponsoredFPC };
   }
 
   /**
@@ -237,9 +240,9 @@ export class VotingClient {
    * the SponsoredFPC, so it never funds — and the bridge modal never appears.
    */
   async needsFunding(): Promise<boolean> {
-    if (!this.fpc) return false;
+    if (this.feePayment.type !== "fpc") return false;
     if (this.pendingClaim) return false;
-    const { result } = await this.fpc.methods
+    const { result } = await this.feePayment.instance.methods
       .get_balance(this.account)
       .simulate({ from: this.account });
     return BigInt(result.toString()) === 0n;
@@ -252,11 +255,11 @@ export class VotingClient {
    * funding isn't needed.
    */
   async fund(onStatus?: (status: BridgeStatus) => void): Promise<void> {
-    if (!this.fpc || this.pendingClaim) return;
+    if (this.feePayment.type !== "fpc" || this.pendingClaim) return;
     this.pendingClaim = await bridgeFeeJuiceToFpc({
       node: this.node,
       l1ChainId: Number(this.deployment.chainId),
-      fpcAddress: this.fpc.address,
+      fpcAddress: this.feePayment.instance.address,
       onStatus,
     });
   }
@@ -271,20 +274,25 @@ export class VotingClient {
   async vote(candidate: bigint): Promise<void> {
     await this.voting.methods
       .cast_vote(election(this.deployment), new Fr(candidate))
-      .send({ from: this.account, fee: { paymentMethod: this.votePaymentMethod() } });
+      .send({
+        from: this.account,
+        fee: { paymentMethod: this.votePaymentMethod() },
+      });
   }
   // docs:end:send_vote
 
   /** The fee payment method for a vote: SponsoredFPC, a one-time top-up, or the balance. */
   private votePaymentMethod(): FeePaymentMethod {
-    if (this.sponsored) return this.sponsored;
-    if (!this.fpc) throw new Error("No fee payment method configured.");
+    if (this.feePayment.type === "sponsored") {
+      return new SponsoredFeePaymentMethod(this.feePayment.instance.address);
+    }
+    const fpc = this.feePayment.instance;
     if (this.pendingClaim) {
       const claim = this.pendingClaim;
       this.pendingClaim = null; // single-use
-      return new PrivateFeeJuiceTopupPaymentMethod(this.fpc.address, claim);
+      return new PrivateFeeJuiceTopupPaymentMethod(fpc.address, claim);
     }
-    return new PrivateFeeJuicePaymentMethod(this.fpc.address);
+    return new PrivateFeeJuicePaymentMethod(fpc.address);
   }
 
   // docs:start:simulate_query
@@ -326,7 +334,9 @@ export class VotingClient {
       candidate: bigint;
       tally: bigint;
     }>(this.node, PrivateVotingContract.events.TallyUpdated, {
-      contractAddress: AztecAddress.fromStringUnsafe(this.deployment.contractAddress),
+      contractAddress: AztecAddress.fromStringUnsafe(
+        this.deployment.contractAddress,
+      ),
     });
     return events
       .map((e) => ({
@@ -357,7 +367,9 @@ export class VotingClient {
       candidate: bigint;
       voter: AztecAddress;
     }>(PrivateVotingContract.events.Vote, {
-      contractAddress: AztecAddress.fromStringUnsafe(this.deployment.contractAddress),
+      contractAddress: AztecAddress.fromStringUnsafe(
+        this.deployment.contractAddress,
+      ),
       scopes: [this.account],
     });
     const mine = events.find(
