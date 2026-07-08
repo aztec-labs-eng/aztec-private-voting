@@ -170,7 +170,7 @@ export class VotingClient {
     node: AztecNode,
     deployment: Deployment,
   ): Promise<PrivateVotingContract> {
-    const address = AztecAddress.fromString(deployment.contractAddress);
+    const address = AztecAddress.fromStringUnsafe(deployment.contractAddress);
     const instance = await node.getContract(address);
     if (!instance) {
       throw new Error(
@@ -326,7 +326,7 @@ export class VotingClient {
       candidate: bigint;
       tally: bigint;
     }>(this.node, PrivateVotingContract.events.TallyUpdated, {
-      contractAddress: AztecAddress.fromString(this.deployment.contractAddress),
+      contractAddress: AztecAddress.fromStringUnsafe(this.deployment.contractAddress),
     });
     return events
       .map((e) => ({
@@ -357,7 +357,7 @@ export class VotingClient {
       candidate: bigint;
       voter: AztecAddress;
     }>(PrivateVotingContract.events.Vote, {
-      contractAddress: AztecAddress.fromString(this.deployment.contractAddress),
+      contractAddress: AztecAddress.fromStringUnsafe(this.deployment.contractAddress),
       scopes: [this.account],
     });
     const mine = events.find(

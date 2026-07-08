@@ -14,6 +14,7 @@ export {
   DEFAULT_PAYMENT_MODE,
   resolveL1Funder,
   bridgeMode,
+  apiKeyForNetwork,
   type NetworkName,
   type PaymentMode,
 } from "./network-config.ts";
@@ -47,3 +48,13 @@ export {
   killTracked,
   type SpawnTrackedOptions,
 } from "./spawn.ts";
+
+export {
+  BACKUP_VERSION,
+  resolveFpcAdminBackupPath,
+  readFpcAdminBackup,
+  writeFpcAdminBackup,
+  type FpcAdminBackup,
+  type SignedUpApp,
+  type StoredFPC,
+} from "./fpc-admin-backup.ts";

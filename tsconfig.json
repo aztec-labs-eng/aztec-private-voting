@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["scripts", "lib/aztec-kit/deploy", "lib/aztec-kit/testing", "lib/aztec-kit/bridging", "test/integration"]
+  "include": ["scripts", "lib/aztec-kit/deploy", "lib/aztec-kit/testing", "lib/aztec-kit/bridging", "lib/aztec-kit/node", "test/integration"]
 }

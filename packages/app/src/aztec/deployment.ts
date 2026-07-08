@@ -19,6 +19,7 @@ export interface Deployment {
   electionId: string;
   candidates: Candidate[];
   fpcAddress?: string;
+  fpcSalt?: string;
 }
 
 /**

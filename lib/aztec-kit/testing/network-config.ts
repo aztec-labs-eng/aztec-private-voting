@@ -11,6 +11,17 @@ export const NETWORK_URLS: Record<NetworkName, string> = {
   testnet: "https://canonical.testnet.rpc.aztec-labs.com",
 };
 
+/**
+ * API key for the network's node, read from `<NETWORK>_API_KEY`. Any network
+ * may be fronted by an API gateway requiring the `X-Aztec-API-Key` header;
+ * only those with the env var set send a key. Injected at the node-client
+ * layer via `createNode(url, apiKey)`. The browser apps resolve the same key
+ * from their per-network config (`${VITE_<NETWORK>_API_KEY}`) at build time.
+ */
+export function apiKeyForNetwork(network: NetworkName): string | undefined {
+  return process.env[`${network.toUpperCase()}_API_KEY`] || undefined;
+}
+
 /** L1 parameters the bridging scripts need. Keep in sync with the rollup. */
 export const L1_DEFAULTS: Record<NetworkName, { l1RpcUrl: string; l1ChainId: number }> = {
   local: { l1RpcUrl: "http://localhost:8545", l1ChainId: 31337 },
