@@ -20,7 +20,7 @@ import { EmbeddedWallet } from "@aztec/wallets/embedded";
 import { Fr } from "@aztec/aztec.js/fields";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
 import { createFundedInitializerlessAccounts } from "@aztec/wallets/testing";
-import { deriveSigningKey } from "@aztec/stdlib/keys";
+import { deriveMasterMessageSigningSecretKey } from "@aztec/stdlib/keys";
 import { getContractInstanceFromInstantiationParams } from "@aztec/stdlib/contract";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import { L1FeeJuicePortalManager } from "@aztec/aztec.js/ethereum";
@@ -135,7 +135,7 @@ beforeAll(async () => {
   const voterAccount = await wallet.createSchnorrInitializerlessAccount(
     voterSecret,
     Fr.random(),
-    deriveSigningKey(voterSecret),
+    deriveMasterMessageSigningSecretKey(voterSecret),
   );
   voter = voterAccount.address;
 }, 300_000);

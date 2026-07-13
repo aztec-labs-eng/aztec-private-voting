@@ -22,7 +22,7 @@ import {
 } from "@aztec/aztec.js/fee";
 import { getPublicEvents } from "@aztec/aztec.js/events";
 import { BatchCall } from "@aztec/aztec.js/contracts";
-import { deriveSigningKey } from "@aztec/stdlib/keys";
+import { deriveMasterMessageSigningSecretKey } from "@aztec/stdlib/keys";
 import {
   getContractInstanceFromInstantiationParams,
   type ContractInstanceWithAddress,
@@ -142,7 +142,7 @@ export class VotingClient {
     const account = await wallet.createSchnorrInitializerlessAccount(
       secret,
       salt,
-      deriveSigningKey(secret),
+      deriveMasterMessageSigningSecretKey(secret),
     );
     storeAccount(secret, salt);
     // docs:end:connect

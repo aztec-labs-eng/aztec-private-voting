@@ -58,7 +58,9 @@ import { CppPublicTxSimulator } from "@aztec/simulator/server";
 // so `Measured*` / `Telemetry*` subclasses' `super.simulate(tx)` lands on TS.
 // All telemetry + measurement layers still run; only the AVM engine changes.
 // This file is test-only — never imported by deployed app code.
-const __PublicTxSimulatorProto = Object.getPrototypeOf(CppPublicTxSimulator.prototype) as {
+const __PublicTxSimulatorProto = Object.getPrototypeOf(
+  CppPublicTxSimulator.prototype,
+) as {
   simulate: (tx: unknown) => Promise<unknown>;
 };
 const __tsSimulate = __PublicTxSimulatorProto.simulate;
@@ -78,9 +80,15 @@ import { join } from "node:path";
 import { type Hex } from "viem";
 import { mnemonicToAccount, privateKeyToAddress } from "viem/accounts";
 import { foundry } from "viem/chains";
-import { ensureAztecBinsInPath, killTracked, resolveAnvilBinary, spawnTracked } from "./spawn.ts";
+import {
+  ensureAztecBinsInPath,
+  killTracked,
+  resolveAnvilBinary,
+  spawnTracked,
+} from "./spawn.ts";
 
-const DEFAULT_MNEMONIC = "test test test test test test test test test test test junk";
+const DEFAULT_MNEMONIC =
+  "test test test test test test test test test test test junk";
 
 /**
  * Min-fee padding multiplier for test wallets running against
@@ -125,7 +133,9 @@ export interface LocalNetworkOptions {
  * parallel without fighting over 8545. Caller must `await result.stop()`
  * in its teardown.
  */
-export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise<LocalNetwork> {
+export async function setupLocalNetwork(
+  opts: LocalNetworkOptions = {},
+): Promise<LocalNetwork> {
   // ── 0. PATH. `@aztec/ethereum` shells out to bare `forge` for L1 deploys;
   //    aztec-up no longer pollutes the user's interactive PATH, so we have
   //    to splice the internal-bin directory in ourselves.
@@ -173,6 +183,7 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     minTxsPerBlock: 0,
     aztecTargetCommitteeSize: 0,
     useAutomineSequencer: true,
+    allowEphemeralSigningProtection: true,
   };
 
   // ── 4. Genesis ─────────────────────────────────────────────────────
@@ -192,7 +203,9 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
     ...config,
     vkTreeRoot: getVKTreeRoot(),
     protocolContractsHash,
-    genesisArchiveRoot: fundedAddresses.length ? genesisArchiveRoot : new Fr(GENESIS_ARCHIVE_ROOT),
+    genesisArchiveRoot: fundedAddresses.length
+      ? genesisArchiveRoot
+      : new Fr(GENESIS_ARCHIVE_ROOT),
     feeJuicePortalInitialBalance: fundingNeeded,
     realVerifier: false,
   });
@@ -208,7 +221,11 @@ export async function setupLocalNetwork(opts: LocalNetworkOptions = {}): Promise
   //    so a watcher warping time alongside it would race. `dateProvider` is
   //    still threaded through — the node hands it to the AutomineSequencer.
   const telemetry = await initTelemetryClient(getTelemetryConfig());
-  const node = await createAztecNodeService(config, { telemetry, dateProvider }, { genesis });
+  const node = await createAztecNodeService(
+    config,
+    { telemetry, dateProvider },
+    { genesis },
+  );
 
   const stop = async () => {
     await node.stop();
@@ -261,7 +278,11 @@ async function startAnvil(opts: { l1BlockTime?: number } = {}): Promise<{
       stderr += data.toString();
     };
     const onClose = (code: number | null) => {
-      reject(new Error(`anvil exited with code ${code} before listening. stderr: ${stderr}`));
+      reject(
+        new Error(
+          `anvil exited with code ${code} before listening. stderr: ${stderr}`,
+        ),
+      );
     };
     child.stdout?.on("data", onStdout);
     child.stderr?.on("data", onStderr);
@@ -334,10 +355,14 @@ export async function setupLocalNetworkCli(
   // The CLI internally forks anvil + node + sequencer + prover as grandchildren.
   // spawnTracked makes the whole subtree a single process group, so killing
   // the leader nukes everything — no orphan anvil after a run.
-  const proc: ChildProcess = spawnTracked("aztec", ["start", "--local-network"], {
-    cwd: workDir,
-    env: { ...process.env, AZTEC_WORKDIR: workDir },
-  });
+  const proc: ChildProcess = spawnTracked(
+    "aztec",
+    ["start", "--local-network"],
+    {
+      cwd: workDir,
+      env: { ...process.env, AZTEC_WORKDIR: workDir },
+    },
+  );
 
   // Drain stdout/stderr to a file. Unconsumed pipes fill their OS buffer
   // (~64KB on Linux) and then BLOCK the child on its next write — the node
@@ -398,7 +423,9 @@ async function waitForRpc(
   const deadline = Date.now() + CLI_READINESS_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (proc.exitCode !== null) {
-      throw new Error(`local-network (cli) exited early with code ${proc.exitCode}`);
+      throw new Error(
+        `local-network (cli) exited early with code ${proc.exitCode}`,
+      );
     }
     try {
       const res = await fetch(url, {
@@ -407,7 +434,10 @@ async function waitForRpc(
         body: JSON.stringify(request),
       });
       if (res.ok) {
-        const body = (await res.json()) as { result?: unknown; error?: unknown };
+        const body = (await res.json()) as {
+          result?: unknown;
+          error?: unknown;
+        };
         if (body.result !== undefined) return;
       }
     } catch {
