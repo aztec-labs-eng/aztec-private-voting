@@ -89,10 +89,12 @@ pub contract PrivateVoting {
         // account can vote at most once per election. The nullifier derivation ensures it's not
         // possible to link it back to the account that generated it.
         self.storage.vote_claims.at(election_id).at(self.msg_sender()).claim();
+
         // Emit a private event so we remember who we voted for
         self
             .emit(Vote { election_id: election_id.to_field(), candidate, voter: self.msg_sender() })
             .deliver_to(self.msg_sender(), MessageDelivery::onchain_unconstrained());
+
         // The vote itself stays private; we only enqueue a public bump of the aggregate tally.
         self.enqueue_self._add_to_tally_public(election_id, candidate);
     }
@@ -104,8 +106,10 @@ pub contract PrivateVoting {
     fn _add_to_tally_public(election_id: ElectionId, candidate: Field) {
         assert(self.storage.active_at_block.at(election_id).read() <= self.context.block_number());
         assert(self.storage.vote_ended.at(election_id).read() == false, "Vote has ended");
+
         let new_tally = self.storage.tally.at(election_id).at(candidate).read() + 1;
         self.storage.tally.at(election_id).at(candidate).write(new_tally);
+
         // Emit a public event so a UI can show a live feed of votes as they land.
         self.emit(TallyUpdated { election_id: election_id.to_field(), candidate, tally: new_tally });
     }
@@ -114,6 +118,7 @@ pub contract PrivateVoting {
     #[external("public")]
     fn start_vote(election_id: ElectionId) {
         assert(self.storage.admin.read().eq(self.msg_sender()), "Only admin can start votes");
+
         self.storage.vote_ended.at(election_id).write(false);
         self.storage.active_at_block.at(election_id).initialize(self.context.block_number());
     }
@@ -121,6 +126,7 @@ pub contract PrivateVoting {
     #[external("public")]
     fn end_vote(election_id: ElectionId) {
         assert(self.storage.admin.read().eq(self.msg_sender()), "Only admin can end votes");
+
         self.storage.vote_ended.at(election_id).write(true);
     }
 
