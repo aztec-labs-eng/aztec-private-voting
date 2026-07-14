@@ -131,6 +131,10 @@ export class VotingClient {
     const { realProofs } = await node.getNodeInfo();
     const wallet = await EmbeddedWallet.create(node, {
       pxe: { proverEnabled: realProofs },
+      // On local (no real proofs) use in-memory stores: skips the OPFS SAH-Pool
+      // lock that fails with `createSyncAccessHandle` when a handle is already held.
+      // Testnet keeps the persistent OPFS store so the account survives reloads.
+      ephemeral: !realProofs,
     });
 
     // 2. Reconstruct or create the saved account. Initializerless = no deploy tx:
