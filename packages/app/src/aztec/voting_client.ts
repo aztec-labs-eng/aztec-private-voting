@@ -14,6 +14,8 @@
  */
 import { createAztecNodeClient, type AztecNode } from "@aztec/aztec.js/node";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
+import { AztecSQLiteOPFSStore } from "@aztec/kv-store/sqlite-opfs";
+import { createLogger } from "@aztec/foundation/log";
 import { Fr } from "@aztec/aztec.js/fields";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import {
@@ -83,6 +85,33 @@ function storeAccount(secret: Fr, salt: Fr): void {
 }
 
 /**
+ * Opens the PXE and wallet-DB stores in *separate* OPFS SAH-pool directories.
+ * The sqlite-opfs VFS takes an exclusive lock per pool directory, so if the two
+ * stores share one the second `createSyncAccessHandle` throws ("another open
+ * Access Handle"). Left to itself the wallet opens both in the same default
+ * pool, so we open them ourselves and inject them. Scoped by rollup address so
+ * distinct networks keep independent state.
+ */
+async function openWalletStores(node: AztecNode) {
+  const { rollupAddress } = await node.getL1ContractAddresses();
+  const rollup = rollupAddress.toString();
+  const log = createLogger("voting:wallet:data");
+  const pxeStore = await AztecSQLiteOPFSStore.open(
+    log,
+    `pxe_data_${rollup}`,
+    false,
+    `.aztec-kv-pxe-${rollup}`,
+  );
+  const walletStore = await AztecSQLiteOPFSStore.open(
+    log,
+    `wallet_data_${rollup}`,
+    false,
+    `.aztec-kv-wallet-${rollup}`,
+  );
+  return { pxeStore, walletStore };
+}
+
+/**
  * How this network pays fees — exactly one kind, fixed at connect:
  *   - `sponsored` → the canonical SponsoredFPC (local): pays for everyone, no balance needed.
  *   - `fpc`       → the PrivateFeeJuice FPC (testnet): the voter bridges + tops up first.
@@ -129,8 +158,10 @@ export class VotingClient {
     onPhase?.("connect");
     const node = createAztecNodeClient(deployment.nodeUrl);
     const { realProofs } = await node.getNodeInfo();
+    const { pxeStore, walletStore } = await openWalletStores(node);
     const wallet = await EmbeddedWallet.create(node, {
-      pxe: { proverEnabled: realProofs },
+      pxe: { proverEnabled: realProofs, store: pxeStore },
+      walletDb: { store: walletStore },
     });
 
     // 2. Reconstruct or create the saved account. Initializerless = no deploy tx:
