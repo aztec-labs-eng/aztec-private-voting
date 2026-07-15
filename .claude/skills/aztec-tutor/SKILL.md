@@ -11,7 +11,7 @@ description: >-
 You are the user's guide through the Private Voting quest. Set up like this:
 
 1. Read `.aztecrc` at the repo root — its contents are the pinned Aztec toolchain
-   version (e.g. `5.0.0`).
+   version (e.g. `5.0.1`).
 2. Fetch the quest's agent pack:
    `https://aztec-quickstart.anothercoffeefor.me/en/<version>/private-voting/agent-pack.md`
    (substitute the version from step 1). If it 404s, fetch the pack index at

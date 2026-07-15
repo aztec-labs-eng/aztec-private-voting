@@ -10,19 +10,35 @@
  * first vote (`fee_entrypoint_with_topup`). The visitor connects a real L1 wallet —
  * discovered via EIP-6963 (`mipd`), which is the robust replacement for racing the raw
  * `window.ethereum` — and pays only a little Sepolia ETH for gas; the Fee Juice itself is
- * minted by the testnet faucet handler (`bridgeTokensPublic(.., mint=true)`).
+ * minted by the testnet faucet handler.
  *
- * Minimal, modern stack: `viem` + `mipd` (both by wevm) + `@aztec/aztec.js/*`. No
- * `@aztec/ethereum/*`, no wagmi — keeps the shim small and the install clean.
+ * The three L1 steps (faucet mint → ERC20 approve → portal `depositToAztecPublic`) go out
+ * as plain `eth_sendTransaction` calls through the injected wallet, via viem's
+ * `writeContract`. We deliberately do NOT use `L1FeeJuicePortalManager`: it routes every
+ * write through `L1TxUtils`, which signs locally (`eth_signTransaction` + raw send) — a
+ * method injected wallets like MetaMask don't implement. The L1→L2 claim is derived the
+ * same way it does: a random secret whose hash rides on the deposit, plus the message leaf
+ * index read back from the `DepositToAztecPublic` event.
+ *
+ * Minimal, modern stack: `viem` + `mipd` (both by wevm) + `@aztec/aztec.js/*` +
+ * `@aztec/l1-artifacts` (L1 ABIs).
  */
 import { createStore as createMipdStore } from "mipd";
 import { sepolia } from "viem/chains";
-import { createWalletClient, custom, publicActions } from "viem";
+import {
+  createWalletClient,
+  custom,
+  getContract,
+  parseEventLogs,
+  publicActions,
+} from "viem";
 import type { EIP1193Provider } from "viem";
-import { L1FeeJuicePortalManager } from "@aztec/aztec.js/ethereum";
 import { isL1ToL2MessageReady } from "@aztec/aztec.js/messaging";
 import { Fr } from "@aztec/aztec.js/fields";
-import { createLogger } from "@aztec/foundation/log";
+import { computeSecretHash } from "@aztec/stdlib/hash";
+import { FeeJuicePortalAbi } from "@aztec/l1-artifacts/FeeJuicePortalAbi";
+import { FeeAssetHandlerAbi } from "@aztec/l1-artifacts/FeeAssetHandlerAbi";
+import { TestERC20Abi } from "@aztec/l1-artifacts/TestERC20Abi";
 import type { AztecNode } from "@aztec/aztec.js/node";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
@@ -105,30 +121,94 @@ export async function bridgeFeeJuiceToFpc(
     await walletClient.switchChain({ id: sepolia.id });
   }
 
-  // 3. Mint (faucet) + approve + deposit on L1. The wallet client (extended with public
-  //    actions) satisfies the portal manager's read+write needs over the wallet's own
-  //    provider.
+  // 3. Mint (faucet) → approve → deposit on L1, each as an `eth_sendTransaction` the
+  //    injected wallet signs (viem's `.write.*`). See the module header for why we drive
+  //    these ourselves instead of via `L1FeeJuicePortalManager`.
   onStatus?.({ phase: "bridging" });
-  const portal = await L1FeeJuicePortalManager.new(
-    node,
-    // The portal manager only needs an account-bearing public+wallet viem client.
-    walletClient as unknown as Parameters<typeof L1FeeJuicePortalManager.new>[1],
-    createLogger("app:bridge"),
-  );
-  // amount=undefined → bridge exactly the faucet's mint amount; mint=true uses the handler.
-  const claim = await portal.bridgeTokensPublic(fpcAddress, undefined, true);
+  const {
+    l1ContractAddresses: {
+      feeJuiceAddress,
+      feeJuicePortalAddress,
+      feeAssetHandlerAddress,
+    },
+  } = await node.getNodeInfo();
+  if (feeJuicePortalAddress.isZero() || feeJuiceAddress.isZero()) {
+    throw new Error("Fee Juice portal/token is not deployed on this L1.");
+  }
+  if (!feeAssetHandlerAddress || feeAssetHandlerAddress.isZero()) {
+    throw new Error(
+      "This network has no Fee Juice faucet handler to mint from.",
+    );
+  }
+  const tokenAddress = feeJuiceAddress.toString() as `0x${string}`;
+  const portalAddress = feeJuicePortalAddress.toString() as `0x${string}`;
+  const handlerAddress = feeAssetHandlerAddress.toString() as `0x${string}`;
+  const token = getContract({
+    address: tokenAddress,
+    abi: TestERC20Abi,
+    client: walletClient,
+  });
+  const handler = getContract({
+    address: handlerAddress,
+    abi: FeeAssetHandlerAbi,
+    client: walletClient,
+  });
+  const portal = getContract({
+    address: portalAddress,
+    abi: FeeJuicePortalAbi,
+    client: walletClient,
+  });
+
+  // A fresh L1→L2 claim: the secret's hash rides on-chain with the deposit; the secret
+  // itself is consumed later, in the vote tx, to claim the bridged balance.
+  const claimSecret = Fr.random();
+  const claimSecretHash = await computeSecretHash(claimSecret);
+
+  // The faucet mints a fixed amount — that's exactly what we bridge.
+  const amount = await handler.read.mintAmount();
+  await walletClient.waitForTransactionReceipt({
+    hash: await handler.write.mint([account]),
+  });
+  await walletClient.waitForTransactionReceipt({
+    hash: await token.write.approve([portalAddress, amount]),
+  });
+
+  // `depositToAztecPublic` forwards into the rollup Inbox, whose frontier-tree insert
+  // periodically costs far more gas than a point-in-time estimate (a completed subtree
+  // cascades into many hashes + SSTOREs). Triple the estimate so the deposit doesn't
+  // intermittently run out of gas mid-insert; unused gas is refunded.
+  const depositArgs = [
+    fpcAddress.toString() as `0x${string}`,
+    amount,
+    claimSecretHash.toString() as `0x${string}`,
+  ] as const;
+  const gas =
+    (await portal.estimateGas.depositToAztecPublic(depositArgs, { account })) *
+    3n;
+  const receipt = await walletClient.waitForTransactionReceipt({
+    hash: await portal.write.depositToAztecPublic(depositArgs, { gas }),
+  });
+
+  // The portal emits the L1→L2 message key + its leaf index; the vote tx needs the index.
+  const [deposited] = parseEventLogs({
+    abi: FeeJuicePortalAbi,
+    eventName: "DepositToAztecPublic",
+    logs: receipt.logs,
+  });
+  if (!deposited) {
+    throw new Error(
+      "Bridge deposit did not emit a DepositToAztecPublic event.",
+    );
+  }
+  const { key: messageKey, index: messageLeafIndex } = deposited.args;
 
   // 4. Wait for the message to land on L2 so the claim is consumable in the vote tx.
-  const messageHash = Fr.fromHexString(claim.messageHash);
+  const messageHash = Fr.fromHexString(messageKey);
   const startedAt = Date.now();
   while (Date.now() - startedAt < MESSAGE_TIMEOUT_MS) {
     if (await isL1ToL2MessageReady(node, messageHash)) {
       onStatus?.({ phase: "ready" });
-      return {
-        claimAmount: BigInt(claim.claimAmount),
-        claimSecret: claim.claimSecret,
-        messageLeafIndex: BigInt(claim.messageLeafIndex),
-      };
+      return { claimAmount: amount, claimSecret, messageLeafIndex };
     }
     onStatus?.({
       phase: "waiting-message",
@@ -136,7 +216,9 @@ export async function bridgeFeeJuiceToFpc(
     });
     await new Promise((r) => setTimeout(r, MESSAGE_POLL_INTERVAL_MS));
   }
-  throw new Error("Timed out waiting for the bridged Fee Juice to arrive on L2.");
+  throw new Error(
+    "Timed out waiting for the bridged Fee Juice to arrive on L2.",
+  );
 }
 
 /** Human-readable one-liner for a bridge status, for the widget. */

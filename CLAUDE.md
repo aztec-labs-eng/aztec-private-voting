@@ -36,6 +36,6 @@ order, verification, docs links, a code file map, and a quiz bank are all in the
 
     https://aztec-quickstart.anothercoffeefor.me/en/<version>/private-voting/agent-pack.md
 
-where `<version>` is the contents of `.aztecrc` (e.g. `5.0.0`). If that 404s, the
+where `<version>` is the contents of `.aztecrc` (e.g. `5.0.1`). If that 404s, the
 pack index is at https://aztec-quickstart.anothercoffeefor.me/llms.txt. In Claude Code, the
 `/aztec-tutor` skill does all of this for you.

@@ -104,7 +104,7 @@ toolchain version also lives in **`.aztecrc`**, so `aztec-up use` (no argument) 
 
 | Branch | Aztec version                                 |
 | ------ | --------------------------------------------- |
-| `main` | **v5** release cycle — currently `5.0.0`     |
+| `main` | **v5** release cycle — currently `5.0.1`     |
 | `next` | reserved for **v6**                           |
 
 ```bash
