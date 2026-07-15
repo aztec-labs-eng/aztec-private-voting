@@ -61,14 +61,23 @@ pub contract PrivateVoting {
     // docs:start:storage_struct
     #[storage]
     struct Storage<Context> {
+        // Public state
+
         // Address of the admin can start and end elections
         admin: PublicMutable<AztecAddress, Context>,
+
         // Public mapping of election => candidate => number of votes
         tally: Map<ElectionId, Map<Field, PublicMutable<Field, Context>, Context>, Context>,
+
         // Public mapping of election => whether voting has ended
         vote_ended: Map<ElectionId, PublicMutable<bool, Context>, Context>,
+
         // Public mapping of election => block it became active at
         active_at_block: Map<ElectionId, PublicImmutable<u32, Context>, Context>,
+
+
+        // Private state
+
         // Mapping of election => voter => single-use claim that lets a voter vote at most once per election
         // SingleUseClaim is **private**, as it does not reveal which user generated the claim
         vote_claims: Map<ElectionId, Owned<SingleUseClaim<Context>, Context>, Context>,
