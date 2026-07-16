@@ -9,7 +9,7 @@
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 import type { TxHash } from "@aztec/stdlib/tx";
 
-import type { NetworkName } from "../testing/network-config.ts";
+import type { NetworkName } from "./network-config.ts";
 import { formatList, formatWaves } from "./graph.ts";
 
 /** What a unit did: publish a contract, or send an action's tx. */

@@ -19,7 +19,7 @@ import type { AztecNode } from "@aztec/aztec.js/node";
 import type { Wallet } from "@aztec/aztec.js/wallet";
 import type { EmbeddedWallet } from "@aztec/wallets/embedded";
 
-import type { NetworkName } from "../testing/network-config.ts";
+import type { NetworkName } from "./network-config.ts";
 import type { DeployReporter } from "./reporter.ts";
 
 /**

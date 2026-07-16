@@ -29,11 +29,8 @@ import { createExtendedL1Client } from "@aztec/ethereum/client";
 import { createEthereumChain } from "@aztec/ethereum/chain";
 import { createLogger } from "@aztec/foundation/log";
 
-import {
-  setupLocalNetwork,
-  LOCAL_L1_FUNDER_KEY,
-  type LocalNetwork,
-} from "../../lib/aztec-kit/testing/index.ts";
+import { setupLocalNetwork, type LocalNetwork } from "@aztec/aztec/testing";
+import { LOCAL_L1_FUNDER_KEY } from "../../lib/aztec-kit/deploy/network-config.ts";
 import {
   PrivateVotingContract,
   PrivateVotingContractArtifact,
