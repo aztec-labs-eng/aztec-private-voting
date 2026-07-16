@@ -100,6 +100,7 @@ unconstrained fn test_cast_vote_with_separate_accounts() {
     assert_eq(tally, 2);
 }
 
+// docs:start:test_fail_vote_twice
 #[test(should_fail_with = "duplicate siloed nullifier")]
 unconstrained fn test_fail_vote_twice() {
     let (mut env, voting_contract_address, admin) = setup();
@@ -113,6 +114,7 @@ unconstrained fn test_fail_vote_twice() {
     env.call_private(alice, PrivateVoting::at(voting_contract_address).cast_vote(election_id, candidate));
     env.call_private(alice, PrivateVoting::at(voting_contract_address).cast_vote(election_id, candidate));
 }
+// docs:end:test_fail_vote_twice
 
 #[test]
 unconstrained fn test_vote_in_two_different_elections() {

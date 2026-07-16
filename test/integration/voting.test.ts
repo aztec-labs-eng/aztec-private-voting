@@ -1,11 +1,12 @@
 /**
- * Integration test: drives the *real* contract through an in-process Aztec
- * network (anvil + L1 contracts + an AztecNode, all in this process), exactly
- * like the frontend would, but headless and fast.
+ * Integration test: drives the *real* contract through a local Aztec network
+ * the suite spins up itself — the node runs inline in this process, backed by
+ * a throwaway anvil spawned per suite — exactly like the frontend would, but
+ * headless and fast.
  *
- * The in-process network helper is borrowed from aztec-kit (see lib/aztec-kit).
- * Prefunded test accounts (anvil/forge-familiar) pay the fees, so there is no
- * bridging on the local path.
+ * The network comes from `setupLocalNetwork` (`@aztec/aztec/testing`), the
+ * same codepath as `aztec start --local-network`. Prefunded test accounts pay
+ * the fees, so there is no bridging on the local path.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { EmbeddedWallet } from "@aztec/wallets/embedded";
@@ -29,6 +30,7 @@ let wallet: EmbeddedWallet;
 let admin: AztecAddress;
 let voting: PrivateVotingContract;
 
+// docs:start:integration_setup
 beforeAll(async () => {
   // Prefund the first test account at genesis; as an initializerless account it
   // needs no deploy tx — creating it registers the instance and it's usable.
@@ -53,8 +55,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await network?.stop();
 });
+// docs:end:integration_setup
 
 describe("PrivateVoting (in-process network)", () => {
+  // docs:start:integration_vote
   it("counts a private vote in the public tally", async () => {
     // SIMULATE then SEND — the same flow the frontend runs.
     await voting.methods.cast_vote(ELECTION, ALICE_PICK).simulate({ from: admin });
@@ -63,6 +67,7 @@ describe("PrivateVoting (in-process network)", () => {
     const { result } = await voting.methods.get_tally(ELECTION, ALICE_PICK).simulate({ from: admin });
     expect(BigInt(result.toString())).toBe(1n);
   });
+  // docs:end:integration_vote
 
   it("emits a public TallyUpdated event for the live feed", async () => {
     const { events } = await getPublicEvents<{ candidate: bigint; tally: bigint }>(
