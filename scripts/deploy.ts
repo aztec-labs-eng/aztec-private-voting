@@ -23,7 +23,7 @@ import { PrivateVotingContract } from "../packages/contracts/artifacts/PrivateVo
 import { PrivateFeeJuiceContract } from "../packages/contracts/artifacts/PrivateFeeJuice.ts";
 import { runDeployment } from "../lib/aztec-kit/deploy/index.ts";
 import type { Ctx, FeePolicy } from "../lib/aztec-kit/deploy/index.ts";
-import type { NetworkName } from "../lib/aztec-kit/testing/network-config.ts";
+import type { NetworkName } from "../lib/aztec-kit/deploy/network-config.ts";
 
 // The demo runs a single election; the contract itself supports many.
 const ELECTION_ID = 1n;

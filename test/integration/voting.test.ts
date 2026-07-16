@@ -15,7 +15,7 @@ import { createFundedInitializerlessAccounts } from "@aztec/wallets/testing";
 import { getPublicEvents } from "@aztec/aztec.js/events";
 import type { AztecAddress } from "@aztec/aztec.js/addresses";
 
-import { setupLocalNetwork, type LocalNetwork } from "../../lib/aztec-kit/testing/index.ts";
+import { setupLocalNetwork, type LocalNetwork } from "@aztec/aztec/testing";
 import {
   PrivateVotingContract,
   PrivateVotingContractArtifact,

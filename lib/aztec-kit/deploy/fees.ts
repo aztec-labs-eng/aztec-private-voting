@@ -29,7 +29,7 @@ import {
   bridgeMode,
   resolveL1Funder,
   type NetworkName,
-} from "../testing/network-config.ts";
+} from "./network-config.ts";
 import type { DeployReporter, AccountFunding } from "./reporter.ts";
 import type { DeployState } from "./state.ts";
 import type { FeePolicy } from "./types.ts";
