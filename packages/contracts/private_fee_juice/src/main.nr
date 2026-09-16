@@ -17,7 +17,7 @@ pub contract PrivateFeeJuice {
 
     #[derive(Packable, Eq)]
     #[note]
-    struct BalanceNote {
+    pub struct BalanceNote {
         balance: u128,
     }
 
